@@ -15,7 +15,8 @@
     "db:validate": "vitest run tests/schema.test.ts tests/rls.test.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:hosted": "vitest run --config vitest.hosted.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
