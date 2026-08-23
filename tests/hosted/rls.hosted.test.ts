@@ -192,15 +192,52 @@ describe.skipIf(!configured)('hosted RLS', () => {
 
   afterAll(async () => {
     if (!configured || !service) return;
-    // Leave the project exactly as we found it.
+
+    // Leave the project exactly as we found it. Cleanup failures are REPORTED,
+    // not swallowed: the first run of this suite silently failed to delete its
+    // cases because of a foreign key bug in the audit trail, and left rows
+    // behind in a real project. A quiet catch would have hidden it again.
+    const problems: string[] = [];
+    const attempt = async (what: string, run: () => PromiseLike<{ error: unknown }>) => {
+      try {
+        const { error } = await run();
+        if (error) problems.push(`${what}: ${(error as { message: string }).message}`);
+      } catch (e) {
+        problems.push(`${what}: ${(e as Error).message}`);
+      }
+    };
+
     if (createdCaseIds.length) {
-      await service.from('cases').delete().in('id', createdCaseIds);
+      await attempt('delete fixture cases', () =>
+        service.from('cases').delete().in('id', createdCaseIds),
+      );
     }
-    await service.from('cases').delete().eq('org_id', orgBId);
-    await service.from('case_types').delete().eq('org_id', orgBId);
-    if (userIds.orgB) await service.auth.admin.deleteUser(userIds.orgB);
-    if (orgBId) await service.from('organizations').delete().eq('id', orgBId);
-    await service.from('case_types').delete().eq('org_id', orgId).eq('slug', `probe-clone-${RUN}`);
+    await attempt('delete probe-org cases', () =>
+      service.from('cases').delete().eq('org_id', orgBId),
+    );
+    await attempt('delete probe-org case types', () =>
+      service.from('case_types').delete().eq('org_id', orgBId),
+    );
+    await attempt('delete probe clone case type', () =>
+      service.from('case_types').delete().eq('org_id', orgId).eq('slug', `probe-clone-${RUN}`),
+    );
+    if (userIds.orgB) {
+      await attempt('delete probe user', async () => {
+        const { error } = await service.auth.admin.deleteUser(userIds.orgB);
+        return { error };
+      });
+    }
+    if (orgBId) {
+      await attempt('delete probe org', () =>
+        service.from('organizations').delete().eq('id', orgBId),
+      );
+    }
+
+    if (problems.length) {
+      throw new Error(
+        `hosted suite left data behind in ${URL} -- ${problems.join(' | ')}`,
+      );
+    }
   });
 
   // ---------------------------------------------------------------- deployment
@@ -496,8 +533,12 @@ describe.skipIf(!configured)('hosted RLS', () => {
   });
 });
 
-describe.skipIf(configured)('hosted RLS', () => {
-  it('is skipped until .env.local is filled in', () => {
+// Complement of the guard above. Exactly one of these two blocks runs: when
+// .env.local IS configured this one is skipped, which is the healthy state.
+// It exists so an unconfigured machine reports "suite inert" rather than a
+// silent all-green.
+describe.skipIf(configured)('hosted RLS (inert: no Supabase keys in .env.local)', () => {
+  it('did not run because the hosted suite needs NEXT_PUBLIC_SUPABASE_URL and keys', () => {
     expect(configured).toBe(false);
   });
 });

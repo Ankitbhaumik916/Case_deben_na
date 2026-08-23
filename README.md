@@ -15,8 +15,8 @@ rendered dynamically.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Database schema, RLS, seed | **done** |
-| 2 | Auth, portal shell, nav | not started |
-| 3 | Admin → Case Type Builder | not started |
+| 2 | Auth, portal shell, nav | **done** |
+| 3 | Admin → Case Type Builder | next |
 | 4–14 | See the build plan | not started |
 
 ---
@@ -46,7 +46,14 @@ not approximated.
 
 ```bash
 npm run db:validate    # migrations + seed + schema + RLS tests
-npm test               # everything
+npm test               # everything, against PGlite
+```
+
+`npm test` never touches the network. To verify a **deployed** project — real
+accounts, real GoTrue JWTs, real PostgREST — run the opt-in suite:
+
+```bash
+npm run test:hosted    # writes to whatever .env.local points at, then cleans up
 ```
 
 ---
@@ -99,10 +106,24 @@ retention_schedules  per org / per case type
 
 ---
 
+## Design
+
+The palette is deliberately near-monochrome — warm paper, deep ink chrome, one
+brass accent — because **all saturated colour is reserved for case status**,
+which is configured per organisation and rendered from `case_statuses.color`.
+When nothing else in the interface is saturated, a status reads at a glance,
+which is the entire job of the case list and the pipeline board. Every colour
+resolves to a CSS variable in `src/app/globals.css`; re-skinning is a change to
+that one block. Typeface is IBM Plex Sans, with IBM Plex Mono carrying every
+identifier so case and evidence numbers align in a column.
+
 ## Layout
 
 ```
-supabase/migrations/   ordered schema (0001 … 0014)
+src/app/               App Router: (auth) sign-in, (app) authenticated shell
+src/lib/               supabase clients, auth/session, role vocabulary
+src/components/        nav shell and UI primitives
+supabase/migrations/   ordered schema (0001 … 0015)
 supabase/seed.sql      organisation, statuses, two case type templates
 scripts/seed-demo.ts   auth users and demo cases via the admin API
 tests/                 schema + RLS suites, run against PGlite

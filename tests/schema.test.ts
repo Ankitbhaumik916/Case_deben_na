@@ -430,3 +430,62 @@ describe('audit trail', () => {
     expect(after[0].count).toBeLessThanOrEqual(beforeCaseRows);
   });
 });
+
+describe('case deletion', () => {
+  it('deletes a case that has child rows, and keeps the audit trail', async () => {
+    // Regression: the child tables' AFTER DELETE audit triggers used to insert
+    // activity_logs rows referencing the case being removed in the same
+    // statement, so any case with real data on it could not be deleted.
+    await db.asService();
+    const typeId = await getCaseTypeId(db, SEED_ORG_ID, 'investigation');
+    const caseId = await createCase(db, {
+      orgId: SEED_ORG_ID,
+      caseTypeId: typeId,
+      caseNumber: 'DEL-001',
+    });
+
+    const fieldId = await getFieldId(db, SEED_ORG_ID, 'investigation', 'incident_overview', 'summary');
+    await db.query(
+      `insert into public.case_field_values (case_id, field_id, value)
+       values ($1, $2, to_jsonb('doomed'::text))`,
+      [caseId, fieldId],
+    );
+    await db.query(
+      `insert into public.case_people (case_id, role, full_name) values ($1, 'witness', 'Doomed Witness')`,
+      [caseId],
+    );
+    const [{ id: evidenceId }] = await db.query<{ id: string }>(
+      `insert into public.evidence_items (case_id, item_number, description)
+       values ($1, '001', 'Doomed item') returning id`,
+      [caseId],
+    );
+    await db.query(
+      `insert into public.custody_events (evidence_id, event_type, actor_name)
+       values ($1, 'collected', 'Someone')`,
+      [evidenceId],
+    );
+    await db.query(
+      `insert into public.interviews (case_id, subject_name) values ($1, 'Doomed Subject')`,
+      [caseId],
+    );
+
+    const deleted = await db.query<{ id: string }>(
+      `delete from public.cases where id = $1 returning id`,
+      [caseId],
+    );
+    expect(deleted).toHaveLength(1);
+
+    const [remaining] = await db.query<{ count: number }>(
+      `select count(*)::int from public.cases where id = $1`,
+      [caseId],
+    );
+    expect(remaining.count).toBe(0);
+
+    // The trail survives the record it describes.
+    const logs = await db.query<{ action: string }>(
+      `select action from public.activity_logs where case_id = $1`,
+      [caseId],
+    );
+    expect(logs.map((r) => r.action)).toContain('case.deleted');
+  });
+});
