@@ -1,0 +1,3 @@
+# LF in the repository and in the working copy, on every platform, so SQL and
+# TypeScript files do not churn between Windows and CI checkouts.
+* text=auto eol=lf

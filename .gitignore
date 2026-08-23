@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+npm-debug.log*
+
+# secrets - .env*.local covers .env.local, .env.production.local and friends.
+# The service role key lives in .env.local and must never be committed.
+.env
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+supabase/.temp/
+supabase/.branches/
+.pglite/
