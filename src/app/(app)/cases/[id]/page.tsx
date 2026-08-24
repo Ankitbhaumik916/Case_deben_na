@@ -9,10 +9,22 @@ import { Icon } from '@/components/ui/icon';
 import type { FieldDef, PersonOption } from '@/components/fields/DynamicField';
 import { CaseWorkspace, type SectionDef } from './CaseWorkspace';
 import { LocationCard } from './LocationCard';
+import { EvidencePanel, type EvidenceItem } from './EvidencePanel';
 
 export const metadata = { title: 'Case' };
 
-export default async function CasePage({ params }: { params: { id: string } }) {
+const TABS = [
+  ['file', 'Case file'],
+  ['custody', 'Chain of custody'],
+] as const;
+
+export default async function CasePage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { tab?: string };
+}) {
   const user = await requireUser();
   const org = user.activeOrg;
 
@@ -32,8 +44,15 @@ export default async function CasePage({ params }: { params: { id: string } }) {
 
   if (!kase) notFound();
 
-  const [{ data: sections }, { data: fields }, { data: values }, { data: people }, { data: manual }] =
-    await Promise.all([
+  const [
+    { data: sections },
+    { data: fields },
+    { data: values },
+    { data: people },
+    { data: manual },
+    { data: evidence },
+    { data: custody },
+  ] = await Promise.all([
       supabase
         .from('case_type_sections')
         .select('id, key, label, icon, tab_key, tab_label, tab_sort_order, sort_order, is_required, completion_rule')
@@ -55,6 +74,17 @@ export default async function CasePage({ params }: { params: { id: string } }) {
         .from('case_section_status')
         .select('section_id, is_complete')
         .eq('case_id', params.id),
+      supabase
+        .from('evidence_items')
+        .select(
+          'id, item_number, category, description, collected_from, collected_by, collected_at, exam_requested, current_status, current_location',
+        )
+        .eq('case_id', params.id)
+        .order('item_number'),
+      supabase
+        .from('custody_events')
+        .select('id, evidence_id, event_type, actor_name, location, occurred_at, notes')
+        .order('occurred_at'),
     ]);
 
   const fieldsBySection = new Map<string, FieldDef[]>();
@@ -105,6 +135,36 @@ export default async function CasePage({ params }: { params: { id: string } }) {
   const initialValues = Object.fromEntries(
     (values ?? []).map((v) => [v.field_id as string, v.value]),
   );
+
+  const eventsByItem = new Map<string, EvidenceItem['events']>();
+  for (const e of custody ?? []) {
+    const key = e.evidence_id as string;
+    if (!eventsByItem.has(key)) eventsByItem.set(key, []);
+    eventsByItem.get(key)!.push({
+      id: e.id as string,
+      eventType: e.event_type as string,
+      actorName: e.actor_name as string,
+      location: (e.location as string | null) ?? null,
+      occurredAt: e.occurred_at as string,
+      notes: (e.notes as string | null) ?? null,
+    });
+  }
+
+  const evidenceItems: EvidenceItem[] = (evidence ?? []).map((e) => ({
+    id: e.id as string,
+    itemNumber: e.item_number as string,
+    category: (e.category as string | null) ?? null,
+    description: e.description as string,
+    collectedFrom: (e.collected_from as string | null) ?? null,
+    collectedBy: (e.collected_by as string | null) ?? null,
+    collectedAt: (e.collected_at as string | null) ?? null,
+    examRequested: (e.exam_requested as string | null) ?? null,
+    currentStatus: (e.current_status as string) ?? 'in_custody',
+    currentLocation: (e.current_location as string | null) ?? null,
+    events: eventsByItem.get(e.id as string) ?? [],
+  }));
+
+  const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as 'file' | 'custody';
 
   const personOptions: PersonOption[] = (people ?? []).map((p) => ({
     id: p.id as string,
@@ -157,21 +217,54 @@ export default async function CasePage({ params }: { params: { id: string } }) {
         </dl>
       </header>
 
-      <LocationCard
-        caseId={params.id}
-        address={[kase.address, kase.city, kase.county, kase.state].filter(Boolean).join(', ')}
-        lat={kase.lat as number | null}
-        lng={kase.lng as number | null}
-        canWrite={can.write(org.rank)}
-      />
+      <nav aria-label="Case areas" className="flex gap-1 border-b border-edge">
+        {TABS.map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/cases/${params.id}?tab=${key}`}
+            aria-current={tab === key ? 'page' : undefined}
+            className={
+              tab === key
+                ? '-mb-px border-b-2 border-accent px-3 py-2 text-sm font-medium text-ink'
+                : '-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-ink-secondary transition-colors duration-150 hover:border-edge-strong hover:text-ink'
+            }
+          >
+            {label}
+            {key === 'custody' && evidenceItems.length > 0 ? (
+              <span className="tabular ml-1.5 font-mono text-2xs text-ink-muted">
+                {evidenceItems.length}
+              </span>
+            ) : null}
+          </Link>
+        ))}
+      </nav>
 
-      <CaseWorkspace
-        caseId={params.id}
-        sections={sectionDefs}
-        initialValues={initialValues}
-        people={personOptions}
-        canWrite={can.write(org.rank)}
-      />
+      {tab === 'file' ? (
+        <>
+          <LocationCard
+            caseId={params.id}
+            address={[kase.address, kase.city, kase.county, kase.state].filter(Boolean).join(', ')}
+            lat={kase.lat as number | null}
+            lng={kase.lng as number | null}
+            canWrite={can.write(org.rank)}
+          />
+
+          <CaseWorkspace
+            caseId={params.id}
+            sections={sectionDefs}
+            initialValues={initialValues}
+            people={personOptions}
+            canWrite={can.write(org.rank)}
+          />
+        </>
+      ) : (
+        <EvidencePanel
+          caseId={params.id}
+          caseNumber={kase.case_number as string}
+          items={evidenceItems}
+          canWrite={can.write(org.rank)}
+        />
+      )}
     </div>
   );
 }

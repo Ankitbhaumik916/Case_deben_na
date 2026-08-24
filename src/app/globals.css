@@ -221,3 +221,43 @@
   outline: 2px solid var(--surface-chrome);
   outline-offset: 2px;
 }
+
+/* =============================================================================
+   Print — the chain-of-custody document is produced by the browser rather than
+   a PDF library. Selectable, searchable, and no rendering pipeline to maintain.
+   ========================================================================== */
+@media print {
+  /* The app chrome is not part of the document. */
+  header.sticky,
+  .skip-link,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* Keep an item and its ledger on one page where it fits. */
+  section {
+    break-inside: avoid;
+  }
+
+  /* Table headers repeat when a long ledger spills over a page. */
+  thead {
+    display: table-header-group;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+
+  @page {
+    margin: 18mm 14mm;
+  }
+}

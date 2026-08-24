@@ -21,6 +21,7 @@ rendered dynamically.
 | 4 | Case list, filters, map, saved views | **done** (per-field filters deferred) |
 | 5 | Case workspace — dynamic fields, autosave | **done** |
 | 6 | Pipeline board + admin notes | **done** |
+| 7 | Evidence + chain of custody | **done** |
 | 4–14 | See the build plan | not started |
 
 ---
@@ -178,6 +179,7 @@ npm run verify:builder  # an admin builds a discipline, an investigator works a 
 npm run verify:cases    # list, search, filters, stats, create flow, read-only gating
 npm run verify:workspace # dynamic fields, autosave, completion, audit trail
 npm run verify:pipeline # board columns, moves, transition guard, admin notes
+npm run verify:evidence # custody ledger, derived status, printable document
 ```
 
 ## Design
