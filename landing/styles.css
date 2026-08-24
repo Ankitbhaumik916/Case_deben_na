@@ -100,10 +100,10 @@ ul {
   pointer-events: none;
   z-index: 0;
   /*
-    Visible by default so the video still works with JavaScript disabled. An
-    element with no playable source paints nothing, so the gradient below shows
-    through either way; main.js only removes it outright once it knows the
-    source failed.
+    Visible by default, and it stays visible when the clip is missing but the
+    poster is not — the poster is what paints in that case. main.js only hides
+    this element outright when neither asset resolves, letting the gradient
+    below take over.
   */
   opacity: 1;
   transition: opacity 0.6s ease;

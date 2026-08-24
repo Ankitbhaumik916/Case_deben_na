@@ -2,6 +2,23 @@
    Forensibus — landing page behaviour
    No framework, no build step. Three concerns: background video fallback,
    stat count-up, mobile menu.
+   -----------------------------------------------------------------------------
+   BACKGROUND ASSETS — NO CODE CHANGE NEEDED.
+
+   Drop these two files into assets/ and redeploy. index.html already points at
+   both paths; nothing in this file or in styles.css has to be touched.
+
+       assets/bg-video.mp4     the approved clip (must be rights-cleared)
+       assets/bg-poster.jpg    a still frame from it, same aspect ratio
+
+   The page degrades on its own, in this order:
+
+       1. video plays            both files present
+       2. poster image           poster present, video missing or blocked
+       3. CSS gradient           neither present  <-- what ships today
+
+   Nothing 404s fatally and no state is broken at any tier. Reduced-motion
+   users stop at tier 2 by design: they get the still frame, never the motion.
    ========================================================================== */
 
 (function () {
@@ -32,31 +49,67 @@
   };
 
   /* ==========================================================================
-     Background video
+     Background: video -> poster -> gradient
      --------------------------------------------------------------------------
-     assets/bg-video.mp4 is an empty slot. The CSS gradient underneath is the
-     real fallback, so nothing here is required for the page to look finished —
-     this only fades the video in if it genuinely becomes playable.
+     Both asset paths are declared in index.html and both are currently empty,
+     so today this settles on the gradient. Adding the files promotes the page
+     up the tiers with no edit here.
      ====================================================================== */
   function setupVideo() {
     var bg = document.querySelector('.bg');
     var video = document.querySelector('.bg-video');
     if (!bg || !video) return;
 
-    function markMissing(reason) {
-      bg.classList.remove('video-ready');
+    var settled = false;
+
+    // Tier 3. Nothing playable and no poster: remove the element so the CSS
+    // gradient underneath is what shows.
+    function fallToGradient(reason) {
+      bg.classList.remove('video-ready', 'poster-active');
       bg.classList.add('video-missing');
       if (window.console && console.info) {
         console.info(
-          '[forensibus] Background video unavailable (' +
+          '[forensibus] Background video and poster unavailable (' +
             reason +
-            '). Showing the gradient fallback. Drop a licensed file at ' +
-            'assets/bg-video.mp4 to enable it.'
+            '). Showing the gradient. Add assets/bg-video.mp4 and ' +
+            'assets/bg-poster.jpg to enable them.'
         );
       }
     }
 
-    // Motion sensitivity outranks decoration.
+    // Tier 2. The video cannot play, but a poster may still be there. Probe it
+    // before hiding anything — hiding the <video> would hide its poster too,
+    // which is precisely the state this page ships in.
+    function fallToPoster(reason) {
+      if (settled) return;
+      settled = true;
+
+      var posterUrl = video.getAttribute('poster');
+      if (!posterUrl) {
+        fallToGradient(reason + ', no poster declared');
+        return;
+      }
+
+      var probe = new Image();
+      probe.onload = function () {
+        // Leave the <video> in the DOM and visible: the poster is what paints.
+        bg.classList.remove('video-missing');
+        bg.classList.add('poster-active');
+      };
+      probe.onerror = function () {
+        fallToGradient(reason + ', poster also absent');
+      };
+      probe.src = posterUrl;
+    }
+
+    // Tier 1.
+    video.addEventListener('canplay', function () {
+      settled = true;
+      bg.classList.remove('video-missing', 'poster-active');
+      bg.classList.add('video-ready');
+    });
+
+    // Motion sensitivity outranks decoration: hold at the still frame.
     if (prefersReducedMotion) {
       try {
         video.pause();
@@ -64,40 +117,34 @@
       } catch (e) {
         /* no-op */
       }
-      markMissing('prefers-reduced-motion');
+      fallToPoster('prefers-reduced-motion');
       return;
     }
 
-    video.addEventListener('canplay', function () {
-      bg.classList.remove('video-missing');
-      bg.classList.add('video-ready');
-    });
-
-    // A failed <source> bubbles its error to the source element, not the video.
+    // A failed <source> raises its error on the source element, not the video.
     var source = video.querySelector('source');
     if (source) {
       source.addEventListener('error', function () {
-        markMissing('source failed to load');
+        fallToPoster('source failed to load');
       });
     }
     video.addEventListener('error', function () {
-      markMissing('decode error');
+      fallToPoster('decode error');
     });
 
-    // Autoplay can still be refused even when muted.
+    // Autoplay can be refused even when muted.
     var attempt = video.play();
     if (attempt && typeof attempt.catch === 'function') {
       attempt.catch(function () {
-        markMissing('autoplay blocked');
+        fallToPoster('autoplay blocked');
       });
     }
 
     // NETWORK_NO_SOURCE (3) is the reliable "nothing to play" signal.
     window.setTimeout(function () {
+      if (settled) return;
       if (video.networkState === 3 || video.readyState === 0) {
-        if (!bg.classList.contains('video-ready')) {
-          markMissing('no playable source');
-        }
+        fallToPoster('no playable source');
       }
     }, 2500);
   }

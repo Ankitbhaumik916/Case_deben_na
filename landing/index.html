@@ -47,12 +47,11 @@
       <div class="bg-fallback" aria-hidden="true"></div>
 
       <!--
-        PLACEHOLDER SLOT. assets/bg-video.mp4 is not in the repo — drop in
-        footage you hold rights to (licensed stock, commissioned, or generated)
-        and it takes over automatically. If it is missing or fails to decode,
-        main.js flags the parent and the gradient above stays visible.
+        DROP-IN SLOT — no code change needed.
 
-        Add poster="assets/bg-poster.jpg" once you have a real still frame.
+        Put assets/bg-video.mp4 and assets/bg-poster.jpg in assets/ and redeploy;
+        the paths below already point at them. Until both exist the page falls
+        back on its own: video -> poster -> the CSS gradient above.
       -->
       <video
         class="bg-video"
@@ -61,6 +60,7 @@
         loop
         playsinline
         preload="metadata"
+        poster="assets/bg-poster.jpg"
         aria-hidden="true"
         tabindex="-1"
       >

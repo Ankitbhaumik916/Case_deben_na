@@ -18,23 +18,44 @@ black, full-bleed and display-typeface led. Do not share tokens between them.
 Three things are intentionally unfinished, each because filling them in with
 something invented would be worse than leaving them visibly empty.
 
-### 1. `assets/bg-video.mp4` — not present
+### 1. Background clip and poster — drop-in, no code change
 
-Drop in footage **you hold rights to** (licensed stock, commissioned, or
-AI-generated) at that exact path and it takes over with no code change. Do not
-hotlink another site's asset.
+When the approved footage is ready, put **both** files in `assets/` and
+redeploy. `index.html` already points at these exact paths; nothing in
+`main.js` or `styles.css` needs editing.
 
-Until then a CSS gradient in `.bg-fallback` renders instead — a dark radial wash
-with a faint dot grid echoing the display face. It needs no binary asset, so the
-page never looks broken. `main.js` detects the failed source and removes the
-video element.
+```
+assets/bg-video.mp4     the approved clip (must be rights-cleared)
+assets/bg-poster.jpg    a still frame from it, same aspect ratio
+```
 
-The empty slot costs one 404 per page load. That is the trade for "drop the file
-in and it just works"; if you would rather have a silent console until then,
-comment out the `<source>` line in `index.html`.
+Use footage **you hold rights to** — licensed stock, commissioned, or
+AI-generated. Do not hotlink another site's asset.
 
-A `poster` still frame is optional — add `poster="assets/bg-poster.jpg"` to the
-`<video>` tag once you have one.
+The page degrades on its own, in this order:
+
+| Tier | Renders | When |
+|---|---|---|
+| 1 | the video, looping | both files present |
+| 2 | the poster still | poster present; video missing, blocked, or reduced-motion |
+| 3 | a CSS gradient | neither present — **what ships today** |
+
+Tier 3 needs no binary asset at all: a dark radial wash with a faint dot grid
+echoing the display face. So the page looks finished right now, and looks
+better at each tier you unlock.
+
+Reduced-motion visitors deliberately stop at tier 2 — they get the still frame
+and never the motion, even once the clip is in place.
+
+Two notes while the slots are empty:
+
+- Each missing file costs one 404 per page load. That is the price of "drop the
+  file in and it just works"; if you would rather have a silent console until
+  then, comment out the `<source>` line and the `poster` attribute.
+- Tier 2 depends on the `<video>` element staying in the DOM, because a poster
+  only paints while its video element is rendered. `main.js` therefore probes
+  the poster before hiding anything — do not "simplify" that into a blanket
+  `display: none` on load failure, or the poster tier silently disappears.
 
 ### 2. Stat figures — all placeholders
 
