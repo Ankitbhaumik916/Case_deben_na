@@ -36,6 +36,8 @@ export function LocationCard({
     lat: number;
     lng: number;
     label: string;
+    matchedOn: string;
+    exact: boolean;
   } | null>(null);
 
   const placed = lat !== null && lng !== null;
@@ -50,7 +52,13 @@ export function LocationCard({
       setError(result.error);
       return;
     }
-    setSuggestion({ lat: result.lat!, lng: result.lng!, label: result.label ?? '' });
+    setSuggestion({
+      lat: result.lat!,
+      lng: result.lng!,
+      label: result.label ?? '',
+      matchedOn: result.matchedOn ?? '',
+      exact: result.exact ?? true,
+    });
   }
 
   async function commit(nextLat: number | null, nextLng: number | null) {
@@ -179,6 +187,13 @@ export function LocationCard({
           <p className="tabular mt-0.5 font-mono text-xs text-ink-muted">
             {suggestion.lat.toFixed(5)}, {suggestion.lng.toFixed(5)}
           </p>
+          {!suggestion.exact ? (
+            <p className="mt-1.5 rounded border border-edge-strong bg-raised px-2 py-1.5 text-xs text-ink-secondary">
+              The full address did not match, so it fell back to{' '}
+              <span className="font-medium text-ink">{suggestion.matchedOn}</span>. That is an
+              area, not a doorstep — check it before accepting, or type exact coordinates.
+            </p>
+          ) : null}
           <div className="mt-2 flex gap-2">
             <Button size="sm" loading={busy} onClick={() => void commit(suggestion.lat, suggestion.lng)}>
               Use this

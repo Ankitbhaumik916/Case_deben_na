@@ -14,7 +14,16 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  */
 
 export type LocationResult =
-  | { ok: true; lat: number | null; lng: number | null; label?: string }
+  | {
+      ok: true;
+      lat: number | null;
+      lng: number | null;
+      label?: string;
+      /** The form of the address that actually matched. */
+      matchedOn?: string;
+      /** False when a coarser form had to be used than what was asked. */
+      exact?: boolean;
+    }
   | { ok: false; error: string };
 
 const Coords = z.object({
@@ -79,47 +88,92 @@ export async function geocodeCase(caseId: string): Promise<LocationResult> {
 
   if (!kase) return { ok: false, error: 'That case no longer exists.' };
 
-  const query = [kase.address, kase.city, kase.county, kase.state]
+  /*
+   * Try progressively coarser, because a full street address often does not
+   * match. A real one from this system:
+   *
+   *   "House no 4, Bharathidasan street, potheri, Chengalpattu, Chennai,
+   *    Tamil Nadu" -> no match
+   *   "potheri, Chengalpattu, Tamil Nadu"                -> 12.8208, 80.0369
+   *
+   * The first version asked once and gave up, which for that address meant the
+   * feature simply did not work. Dropping the leading part of the address one
+   * comma at a time gets to something the gazetteer knows, and the answer says
+   * which form matched so nobody assumes house-number precision they did not
+   * get.
+   */
+  const parts = [kase.address, kase.city, kase.county, kase.state]
     .filter(Boolean)
     .join(', ')
-    .trim();
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
 
-  if (!query) {
-    return { ok: false, error: 'This case has no address to look up. Add one, or type the coordinates.' };
-  }
+  // De-duplicate: "…, Tamil Nadu, Tamil Nadu" is what a state field plus a
+  // state already typed into the address produces.
+  const seen = new Set<string>();
+  const cleaned = parts.filter((p) => {
+    const key = p.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
-      {
-        headers: { 'User-Agent': 'Forensibus/0.1 (forensic case management)' },
-        signal: AbortSignal.timeout(12000),
-      },
-    );
-  } catch {
+  if (cleaned.length === 0) {
     return {
       ok: false,
-      error: 'The geocoding service could not be reached. Type the coordinates instead.',
+      error: 'This case has no address to look up. Add one, or type the coordinates.',
     };
   }
 
-  if (!response.ok) {
-    return { ok: false, error: `The geocoding service answered ${response.status}.` };
+  // Full address first, then drop the most specific element each time.
+  const attempts: string[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    attempts.push(cleaned.slice(i).join(', '));
   }
 
-  const results = (await response.json()) as { lat: string; lon: string; display_name: string }[];
-  if (!results?.length) {
-    return {
-      ok: false,
-      error: `Nothing found for “${query}”. Try a coarser address, or type the coordinates.`,
-    };
+  for (const [index, query] of attempts.entries()) {
+    // Nominatim's usage policy asks for at most one request a second.
+    if (index > 0) await new Promise((r) => setTimeout(r, 1100));
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
+        {
+          headers: { 'User-Agent': 'Forensibus/0.1 (forensic case management)' },
+          signal: AbortSignal.timeout(12000),
+        },
+      );
+    } catch {
+      return {
+        ok: false,
+        error: 'The geocoding service could not be reached. Type the coordinates instead.',
+      };
+    }
+
+    if (!response.ok) continue;
+
+    const results = (await response.json()) as {
+      lat: string;
+      lon: string;
+      display_name: string;
+    }[];
+
+    if (results?.length) {
+      return {
+        ok: true,
+        lat: Number(results[0].lat),
+        lng: Number(results[0].lon),
+        label: results[0].display_name,
+        matchedOn: query,
+        exact: index === 0,
+      };
+    }
   }
 
   return {
-    ok: true,
-    lat: Number(results[0].lat),
-    lng: Number(results[0].lon),
-    label: results[0].display_name,
+    ok: false,
+    error: `Nothing was found for this address, even after trying coarser forms of it. Type the coordinates instead — right-click the spot in any map app to copy them.`,
   };
 }

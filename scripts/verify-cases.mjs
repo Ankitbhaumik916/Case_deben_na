@@ -119,7 +119,7 @@ console.log('\nMAP VIEW');
 const map = await get('/cases?view=map', inv);
 check(map.status === 200, 'map renders', String(map.status));
 check(/\d+ of \d+ cases? positioned/.test(map.body), 'reports how many cases are placed');
-check(/Group nearby cases/.test(map.body), 'offers the clustering toggle');
+check(/Dot colour = status/.test(map.body), 'shows a key for what the pin colours mean');
 check(/List the positioned cases/.test(map.body), 'and a keyboard-reachable list of the same data');
 
 console.log('\nCASE DETAIL');

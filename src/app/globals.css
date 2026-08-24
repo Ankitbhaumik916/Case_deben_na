@@ -197,15 +197,27 @@
   background: var(--surface-chrome-hover);
 }
 
-/* Cluster count marker. Drawn as DOM rather than a symbol layer so the map has
-   no dependency on a glyph endpoint — see the note in CaseMap.tsx. */
-.fb-cluster-count {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-inverse);
-  line-height: 1;
-  /* Must not swallow the click that expands the cluster underneath it. */
-  pointer-events: none;
-  user-select: none;
+/* Case pin. A real button rather than a WebGL circle, so it is focusable,
+   keyboard-activatable and announced — and so it always draws. The colour is
+   the case status, passed in as --pin. See the note in CaseMap.tsx. */
+.fb-pin {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--pin, #64748b);
+  box-shadow: 0 1px 4px rgba(18, 22, 31, 0.45);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fb-pin:hover {
+  transform: scale(1.25);
+  box-shadow: 0 2px 8px rgba(18, 22, 31, 0.55);
+}
+
+.fb-pin:focus-visible {
+  outline: 2px solid var(--surface-chrome);
+  outline-offset: 2px;
 }

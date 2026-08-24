@@ -22,12 +22,16 @@ import type { CaseRow } from './types';
  * This asks for one thing: PNG tiles. No style document, no sprite, no glyphs,
  * no vector decoding. Visually it is the same Positron design.
  *
- * Because there are no glyphs there is no symbol layer, so cluster counts are
- * drawn as DOM markers rather than map labels. That removes the last dependency
- * on a font endpoint and keeps the numbers.
+ * Pins are DOM markers, not WebGL circle layers, for the same reason. The
+ * layer path is the one that already failed once on the machine this was built
+ * for, and a pin that might not draw is worth less than one that always does.
+ * As HTML they are also real buttons: focusable, keyboard-activatable and
+ * announced by a screen reader, none of which a circle in a canvas is.
  *
- * To go back to vector, point BASEMAP at the style.json and re-add a symbol
- * layer — but read the paragraph above first.
+ * That means no MapLibre clustering, since clustering lives in the layer it
+ * renders. The brief asked for a cluster map; at these volumes a visible pin per
+ * case is more useful than a bubble that may not appear, and grouping can come
+ * back as DOM once there are enough cases to need it.
  */
 
 const BASEMAP = {
@@ -53,7 +57,6 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
   const router = useRouter();
   const container = React.useRef<HTMLDivElement>(null);
   const [stage, setStage] = React.useState<Stage>('starting');
-  const [clustered, setClustered] = React.useState(true);
   const [message, setMessage] = React.useState<string | null>(null);
 
   const located = React.useMemo(
@@ -80,7 +83,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 
     let cancelled = false;
     let map: import('maplibre-gl').Map | null = null;
-    const labels = new Map<number, import('maplibre-gl').Marker>();
+    const pins: import('maplibre-gl').Marker[] = [];
     let timeout: number | undefined;
 
     async function boot() {
@@ -162,43 +165,51 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       }, 12000);
 
       /**
-       * Cluster counts as DOM markers.
+       * One marker per case, rebuilt whenever the set changes.
        *
-       * A symbol layer would be less code, but it needs glyphs from a font
-       * endpoint — one more request to be blocked, which is the failure this
-       * whole component is working around. Markers are plain HTML and cost
-       * nothing extra to fetch.
+       * Marker keeps them positioned through pan and zoom; nothing here has to
+       * track the viewport.
        */
-      function syncLabels() {
-        if (cancelled || !map) return;
+      function placePins() {
+        pins.forEach((m) => m.remove());
+        pins.length = 0;
 
-        const seen = new Set<number>();
-        if (clustered) {
-          for (const feature of map.queryRenderedFeatures({ layers: ['clusters'] })) {
-            const id = feature.properties?.cluster_id as number | undefined;
-            const at = pointCoords(feature.geometry);
-            if (id === undefined || !at) continue;
-            seen.add(id);
+        for (const c of located) {
+          const el = document.createElement('button');
+          el.type = 'button';
+          el.className = 'fb-pin';
+          el.style.setProperty('--pin', c.status_color ?? '#64748b');
+          el.setAttribute(
+            'aria-label',
+            `${c.case_number}, ${c.status_label ?? 'no status'}${c.address ? `, ${c.address}` : ''}`,
+          );
+          el.title = `${c.case_number} — ${c.status_label ?? 'no status'}`;
 
-            let marker = labels.get(id);
-            if (!marker) {
-              const el = document.createElement('div');
-              el.className = 'fb-cluster-count';
-              marker = new maplibregl.Marker({ element: el }).setLngLat(at).addTo(map);
-              labels.set(id, marker);
-            }
-            marker.setLngLat(at);
-            marker.getElement().textContent = String(
-              feature.properties?.point_count_abbreviated ?? feature.properties?.point_count ?? '',
-            );
-          }
-        }
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([c.lng!, c.lat!])
+            .addTo(target);
 
-        for (const [id, marker] of labels) {
-          if (!seen.has(id)) {
-            marker.remove();
-            labels.delete(id);
-          }
+          const open = () => {
+            const node = document.createElement('div');
+            node.innerHTML = `
+              <p class="fb-popup-number">${escapeHtml(c.case_number)}</p>
+              <p class="fb-popup-address">${escapeHtml(c.address || 'No address recorded')}</p>
+              <p class="fb-popup-meta">
+                <span class="fb-popup-dot" style="background:${escapeHtml(c.status_color ?? '#64748b')}"></span>
+                ${escapeHtml(c.status_label ?? 'No status')} · ${escapeHtml(c.case_type_name)}
+              </p>
+              <button type="button" class="fb-popup-open">Open case</button>`;
+            node.querySelector('.fb-popup-open')?.addEventListener('click', () => {
+              router.push(`/cases/${c.id}`);
+            });
+            new maplibregl.Popup({ closeButton: true, offset: 18 })
+              .setLngLat([c.lng!, c.lat!])
+              .setDOMContent(node)
+              .addTo(target);
+          };
+
+          el.addEventListener('click', open);
+          pins.push(marker);
         }
       }
 
@@ -206,98 +217,16 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         if (cancelled) return;
         window.clearTimeout(timeout);
 
-        target.addSource('cases', {
-          type: 'geojson',
-          data: geojson,
-          cluster: clustered,
-          clusterRadius: 45,
-          clusterMaxZoom: 12,
-        });
-
-        target.addLayer({
-          id: 'clusters',
-          type: 'circle',
-          source: 'cases',
-          filter: ['has', 'point_count'],
-          paint: {
-            'circle-color': '#12161f',
-            'circle-radius': ['step', ['get', 'point_count'], 15, 5, 20, 20, 26],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff',
-          },
-        });
-
-        target.addLayer({
-          id: 'case-points',
-          type: 'circle',
-          source: 'cases',
-          filter: ['!', ['has', 'point_count']],
-          paint: {
-            'circle-color': ['get', 'statusColor'],
-            'circle-radius': 7,
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff',
-          },
-        });
+        placePins();
 
         const bounds = new maplibregl.LngLatBounds();
         for (const c of located) bounds.extend([c.lng!, c.lat!]);
         if (located.length === 1) {
           target.setCenter([located[0].lng!, located[0].lat!]);
-          target.setZoom(11);
+          target.setZoom(13);
         } else {
-          target.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 0 });
+          target.fitBounds(bounds, { padding: 70, maxZoom: 13, duration: 0 });
         }
-
-        target.on('click', 'clusters', (e) => {
-          const feature = target.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
-          const clusterId = feature?.properties?.cluster_id;
-          const center = feature ? pointCoords(feature.geometry) : null;
-          if (clusterId === undefined || !center) return;
-          const source = target.getSource('cases') as import('maplibre-gl').GeoJSONSource;
-          source.getClusterExpansionZoom(clusterId).then((zoom) => {
-            target.easeTo({ center, zoom });
-          });
-        });
-
-        target.on('click', 'case-points', (e) => {
-          const feature = e.features?.[0];
-          const at = feature ? pointCoords(feature.geometry) : null;
-          if (!feature || !at) return;
-          const p = feature.properties as Record<string, string>;
-
-          const node = document.createElement('div');
-          node.innerHTML = `
-            <p class="fb-popup-number">${escapeHtml(p.caseNumber)}</p>
-            <p class="fb-popup-address">${escapeHtml(p.address || 'No address recorded')}</p>
-            <p class="fb-popup-meta">
-              <span class="fb-popup-dot" style="background:${escapeHtml(p.statusColor)}"></span>
-              ${escapeHtml(p.statusLabel)} · ${escapeHtml(p.typeName)}
-            </p>
-            <button type="button" class="fb-popup-open">Open case</button>`;
-          node.querySelector('.fb-popup-open')?.addEventListener('click', () => {
-            router.push(`/cases/${p.id}`);
-          });
-
-          new maplibregl.Popup({ closeButton: true, offset: 14 })
-            .setLngLat(at)
-            .setDOMContent(node)
-            .addTo(target);
-        });
-
-        for (const layer of ['clusters', 'case-points']) {
-          target.on('mouseenter', layer, () => {
-            target.getCanvas().style.cursor = 'pointer';
-          });
-          target.on('mouseleave', layer, () => {
-            target.getCanvas().style.cursor = '';
-          });
-        }
-
-        // 'idle' fires once the frame has settled, which is when the cluster
-        // features are actually queryable.
-        target.on('idle', syncLabels);
-        target.on('move', syncLabels);
 
         setStage('ready');
         setMessage(null);
@@ -309,11 +238,10 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
-      labels.forEach((m) => m.remove());
-      labels.clear();
+      pins.forEach((m) => m.remove());
       map?.remove();
     };
-  }, [located, clustered, router]);
+  }, [located, router]);
 
   const missing = cases.filter((c) => c.lat === null || c.lng === null);
 
@@ -349,15 +277,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           {located.length} of {cases.length} case{cases.length === 1 ? '' : 's'} positioned
           {stage === 'starting' ? ' · loading map…' : ''}
         </p>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-secondary">
-          <input
-            type="checkbox"
-            checked={clustered}
-            onChange={(e) => setClustered(e.target.checked)}
-            className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--accent)]"
-          />
-          Group nearby cases
-        </label>
+        <span className="text-xs text-ink-muted">Click a pin for the case</span>
       </div>
 
       {legend.length > 0 ? (
@@ -376,13 +296,6 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
               <span className="tabular font-mono text-2xs text-ink-muted">{entry.count}</span>
             </span>
           ))}
-          <span className="flex items-center gap-1.5 text-xs text-ink-secondary">
-            <span
-              aria-hidden="true"
-              className="h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-chrome"
-            />
-            grouped cases
-          </span>
         </div>
       ) : null}
 
