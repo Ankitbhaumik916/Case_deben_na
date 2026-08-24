@@ -17,7 +17,8 @@ rendered dynamically.
 | 1 | Database schema, RLS, seed | **done** |
 | 2 | Auth, portal shell, nav | **done** |
 | — | Marketing landing page at `/` | **done** |
-| 3 | Admin → Case Type Builder | next |
+| 3 | Admin → Case Type Builder | **done** |
+| 4 | Case list, filters, create flow | list/stats/create **done**; map + saved views pending |
 | 4–14 | See the build plan | not started |
 
 ---
@@ -155,6 +156,10 @@ One Next project, one deployable output.
 | `/login` | sign in | public; a signed-in visitor is bounced to `/portal` |
 | `/signup` | self-service registration | public, and only while `SIGNUP_ENABLED` |
 | `/portal` | the app home | required |
+| `/cases` | case list (`?view=list\|map\|stats`) | required |
+| `/cases/new` | case type picker, then create | investigator+ |
+| `/cases/[id]` | case file (read-only until phase 5) | required |
+| `/admin/case-types` | Case Type Builder | admin+ |
 | `/cases`, `/pipeline`, … | later phases | required |
 
 `middleware.ts` **must sit at `src/middleware.ts`**, not the repo root — with a
@@ -166,6 +171,8 @@ the only thing standing between a visitor and the app.
 ```bash
 npm run verify:routes   # / -> Get Started -> /signup -> /login -> /portal
 npm run verify:signup   # registration, roles, duplicates, audit; cleans up after itself
+npm run verify:builder  # an admin builds a discipline, an investigator works a case of it
+npm run verify:cases    # list, search, filters, stats, create flow, read-only gating
 ```
 
 ## Design

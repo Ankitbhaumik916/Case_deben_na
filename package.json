@@ -21,7 +21,8 @@
     "user:create": "tsx scripts/create-user.ts",
     "verify:signup": "tsx scripts/verify-signup.ts",
     "verify:builder": "node scripts/verify-builder.mjs",
-    "user:role": "tsx scripts/set-role.ts"
+    "user:role": "tsx scripts/set-role.ts",
+    "verify:cases": "node scripts/verify-cases.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

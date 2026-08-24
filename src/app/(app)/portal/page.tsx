@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { FolderOpen, Layers, ShieldAlert } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireUser, can, ROLE_LABEL } from '@/lib/auth';
@@ -155,12 +156,9 @@ export default async function PortalPage() {
 
 function CaseTypeCard({ type }: { type: CaseTypeTile }) {
   return (
-    <article
-      // Inert until the case list lands in phase 4. Rendered complete so the
-      // data is verifiable now, but it does not pretend to be a link.
-      aria-disabled="true"
-      title="Opens the case list — phase 4"
-      className="group relative flex h-full cursor-not-allowed flex-col rounded-lg border border-edge bg-raised p-4 shadow-sm transition-colors duration-150"
+    <Link
+      href={`/cases?type=${type.slug}`}
+      className="group relative flex h-full cursor-pointer flex-col rounded-lg border border-edge bg-raised p-4 shadow-sm transition-colors duration-150 hover:border-edge-strong hover:bg-sunken"
     >
       <div className="flex items-start gap-3">
         <span
@@ -185,10 +183,10 @@ function CaseTypeCard({ type }: { type: CaseTypeTile }) {
         <p className="mt-3 line-clamp-3 text-sm text-ink-secondary">{type.description}</p>
       ) : null}
 
-      <div className="mt-4 flex items-center gap-1.5 pt-1 text-xs text-ink-muted">
+      <div className="mt-4 flex items-center gap-1.5 pt-1 text-xs text-ink-muted group-hover:text-ink-secondary">
         <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" />
-        <span>Case list arrives in phase 4</span>
+        <span>Open the case list</span>
       </div>
-    </article>
+    </Link>
   );
 }
