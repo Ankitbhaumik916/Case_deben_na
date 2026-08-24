@@ -9,21 +9,49 @@ import type { CaseRow } from './types';
 /**
  * Clustered case map.
  *
- * MapLibre with CARTO's Positron basemap: vector tiles, no account, no API key,
- * and a near-monochrome style that leaves the status colours as the only
- * saturated thing on screen — the same rule the rest of the interface follows.
+ * Two basemaps, tried in order, because one of them failing is not hypothetical
+ * — it happened, silently, on the first machine this ran on:
  *
- * The library is ~800KB, so it is imported inside an effect rather than at the
- * top of the module. Nothing is fetched until someone actually opens the map.
+ *   1. CARTO Positron, vector. Better looking, but it pulls a style document,
+ *      a sprite sheet, glyph ranges and vector tiles from a second host, and
+ *      decodes them on the GPU. Four things to go wrong.
+ *   2. CARTO Positron raster. One tile URL, no sprite, no glyphs, no vector
+ *      decoding. Far less to block or choke on.
+ *
+ * If the vector map has not reported itself loaded within eight seconds the
+ * component tears it down and rebuilds on raster, and says which one it ended
+ * up using. Cluster counts are drawn as text only on the vector style, because
+ * a symbol layer needs glyphs — on raster the clusters are sized circles you
+ * click to expand, which is a small loss next to no map at all.
  */
 
-const BASEMAP = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const VECTOR_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+
+/** Inline, so it depends on a tile endpoint and nothing else. */
+const RASTER_STYLE = {
+  version: 8 as const,
+  sources: {
+    basemap: {
+      type: 'raster' as const,
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    },
+  },
+  layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
+};
+
+type Stage = 'starting' | 'style' | 'ready' | 'failed';
 
 export function CaseMap({ cases }: { cases: CaseRow[] }) {
   const router = useRouter();
   const container = React.useRef<HTMLDivElement>(null);
-  const mapRef = React.useRef<unknown>(null);
-  const [status, setStatus] = React.useState<'loading' | 'ready' | 'failed'>('loading');
+  const [stage, setStage] = React.useState<Stage>('starting');
+  const [renderer, setRenderer] = React.useState<'vector' | 'raster' | null>(null);
   const [clustered, setClustered] = React.useState(true);
   const [message, setMessage] = React.useState<string | null>(null);
 
@@ -33,9 +61,11 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
   );
 
   React.useEffect(() => {
+    if (located.length === 0) return;
+
     let cancelled = false;
     let map: import('maplibre-gl').Map | null = null;
-    const timeouts: number[] = [];
+    const timers: number[] = [];
 
     async function boot() {
       if (!container.current) return;
@@ -43,20 +73,19 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       let maplibregl: typeof import('maplibre-gl');
       try {
         maplibregl = await import('maplibre-gl');
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          setStatus('failed');
-          setMessage('The map library could not be loaded.');
+          setStage('failed');
+          setMessage(`The map library did not load: ${(e as Error).message}`);
         }
         return;
       }
       if (cancelled || !container.current) return;
 
-      // MapLibre v5+ requires WebGL 2. Checking first turns an opaque library
-      // failure into a sentence that names the actual problem.
-      const probe = document.createElement('canvas');
-      if (!probe.getContext('webgl2')) {
-        setStatus('failed');
+      // MapLibre v5+ needs WebGL 2. Checking first names the problem instead of
+      // leaving an opaque library failure.
+      if (!document.createElement('canvas').getContext('webgl2')) {
+        setStage('failed');
         setMessage(
           'This browser cannot provide WebGL 2, which the map needs. Turn on hardware acceleration in the browser settings, or use the list below.',
         );
@@ -79,57 +108,8 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         })),
       };
 
-      map = new maplibregl.Map({
-        container: container.current,
-        style: BASEMAP,
-        center: [-86.15, 39.0],
-        zoom: 4,
-        attributionControl: { compact: true },
-      });
-      mapRef.current = map;
-
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-
-      /*
-       * Surface EVERY error, not a hand-picked subset.
-       *
-       * The first version only reported errors whose message matched
-       * /style|tile|fetch|network/. A GPU initialisation failure says none of
-       * those things, so the map sat on "loading map..." forever with a blank
-       * canvas and told the user nothing. A blank box with no explanation is
-       * the worst outcome available; anything the library knows is better.
-       */
-      map.on('error', (e) => {
-        if (cancelled) return;
-        const raw = (e as { error?: { message?: string } })?.error?.message ?? 'Unknown map error';
-        setStatus('failed');
-        setMessage(
-          /webgl|gpu|context/i.test(raw)
-            ? `The map could not start the graphics context (${raw}). This usually means hardware acceleration is switched off in the browser, or the GPU does not support WebGL 2.`
-            : `The map could not load: ${raw}`,
-        );
-      });
-
-      // 'load' never firing is its own failure mode, and one no error event
-      // necessarily reports. Do not spin on "loading" indefinitely.
-      const loadTimeout = window.setTimeout(() => {
-        if (cancelled) return;
-        setStatus((current) => {
-          if (current === 'loading') {
-            setMessage(
-              'The map did not finish loading within 15 seconds. The basemap CDN may be blocked on this network.',
-            );
-            return 'failed';
-          }
-          return current;
-        });
-      }, 15000);
-      timeouts.push(loadTimeout);
-
-      map.on('load', () => {
-        if (cancelled || !map) return;
-
-        map.addSource('cases', {
+      function addOverlay(target: import('maplibre-gl').Map, mode: 'vector' | 'raster') {
+        target.addSource('cases', {
           type: 'geojson',
           data: geojson,
           cluster: clustered,
@@ -137,7 +117,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           clusterMaxZoom: 12,
         });
 
-        map.addLayer({
+        target.addLayer({
           id: 'clusters',
           type: 'circle',
           source: 'cases',
@@ -150,21 +130,20 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           },
         });
 
-        map.addLayer({
-          id: 'cluster-count',
-          type: 'symbol',
-          source: 'cases',
-          filter: ['has', 'point_count'],
-          layout: {
-            'text-field': ['get', 'point_count_abbreviated'],
-            'text-size': 12,
-          },
-          paint: { 'text-color': '#ffffff' },
-        });
+        // A symbol layer needs glyphs, which the raster style deliberately does
+        // not pull. Clusters stay clickable either way.
+        if (mode === 'vector') {
+          target.addLayer({
+            id: 'cluster-count',
+            type: 'symbol',
+            source: 'cases',
+            filter: ['has', 'point_count'],
+            layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 },
+            paint: { 'text-color': '#ffffff' },
+          });
+        }
 
-        // Individual cases carry their status colour — the one saturated thing
-        // on a deliberately desaturated basemap.
-        map.addLayer({
+        target.addLayer({
           id: 'case-points',
           type: 'circle',
           source: 'cases',
@@ -180,33 +159,30 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         const bounds = new maplibregl.LngLatBounds();
         for (const c of located) bounds.extend([c.lng!, c.lat!]);
         if (located.length === 1) {
-          map.setCenter([located[0].lng!, located[0].lat!]);
-          map.setZoom(11);
-        } else if (located.length > 1) {
-          map.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 0 });
+          target.setCenter([located[0].lng!, located[0].lat!]);
+          target.setZoom(11);
+        } else {
+          target.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 0 });
         }
 
-        map.on('click', 'clusters', (e) => {
-          const feature = map!.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
+        target.on('click', 'clusters', (e) => {
+          const feature = target.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
           const clusterId = feature?.properties?.cluster_id;
-          if (clusterId === undefined) return;
-          const center = pointCoords(feature.geometry);
-          if (!center) return;
-          const source = map!.getSource('cases') as import('maplibre-gl').GeoJSONSource;
+          const center = feature ? pointCoords(feature.geometry) : null;
+          if (clusterId === undefined || !center) return;
+          const source = target.getSource('cases') as import('maplibre-gl').GeoJSONSource;
           source.getClusterExpansionZoom(clusterId).then((zoom) => {
-            map!.easeTo({ center, zoom });
+            target.easeTo({ center, zoom });
           });
         });
 
-        map.on('click', 'case-points', (e) => {
+        target.on('click', 'case-points', (e) => {
           const feature = e.features?.[0];
-          if (!feature) return;
+          const at = feature ? pointCoords(feature.geometry) : null;
+          if (!feature || !at) return;
           const p = feature.properties as Record<string, string>;
-          const at = pointCoords(feature.geometry);
-          if (!at) return;
 
           const node = document.createElement('div');
-          node.className = 'fb-popup';
           node.innerHTML = `
             <p class="fb-popup-number">${escapeHtml(p.caseNumber)}</p>
             <p class="fb-popup-address">${escapeHtml(p.address || 'No address recorded')}</p>
@@ -215,7 +191,6 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
               ${escapeHtml(p.statusLabel)} · ${escapeHtml(p.typeName)}
             </p>
             <button type="button" class="fb-popup-open">Open case</button>`;
-
           node.querySelector('.fb-popup-open')?.addEventListener('click', () => {
             router.push(`/cases/${p.id}`);
           });
@@ -223,30 +198,99 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           new maplibregl.Popup({ closeButton: true, offset: 14 })
             .setLngLat(at)
             .setDOMContent(node)
-            .addTo(map!);
+            .addTo(target);
         });
 
         for (const layer of ['clusters', 'case-points']) {
-          map.on('mouseenter', layer, () => {
-            map!.getCanvas().style.cursor = 'pointer';
+          target.on('mouseenter', layer, () => {
+            target.getCanvas().style.cursor = 'pointer';
           });
-          map.on('mouseleave', layer, () => {
-            map!.getCanvas().style.cursor = '';
+          target.on('mouseleave', layer, () => {
+            target.getCanvas().style.cursor = '';
           });
         }
+      }
 
-        window.clearTimeout(loadTimeout);
-        setStatus('ready');
-      });
+      function build(mode: 'vector' | 'raster') {
+        map?.remove();
+        setStage('starting');
+        setRenderer(mode);
+
+        const created = new maplibregl.Map({
+          container: container.current!,
+          style: mode === 'vector' ? VECTOR_STYLE : RASTER_STYLE,
+          center: [-86.15, 39.0],
+          zoom: 4,
+          attributionControl: { compact: true },
+        });
+        map = created;
+
+        created.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+        // Report anything the library knows. The first version of this filtered
+        // errors by message and swallowed the one that actually happened.
+        created.on('error', (e) => {
+          if (cancelled) return;
+          const raw = (e as { error?: { message?: string } })?.error?.message ?? 'unknown error';
+          // A vector failure is not terminal — the raster retry follows.
+          if (mode === 'vector') return;
+          setStage('failed');
+          setMessage(
+            /webgl|gpu|context/i.test(raw)
+              ? `The graphics context failed: ${raw}. Hardware acceleration may be switched off.`
+              : `The basemap could not be drawn: ${raw}`,
+          );
+        });
+
+        created.on('styledata', () => {
+          if (!cancelled) setStage((s) => (s === 'starting' ? 'style' : s));
+        });
+
+        created.on('load', () => {
+          if (cancelled) return;
+          addOverlay(created, mode);
+          setStage('ready');
+          if (mode === 'vector') setMessage(null);
+        });
+      }
+
+      build('vector');
+
+      // Vector did not get there in time: rebuild on the simpler style rather
+      // than leaving a blank rectangle.
+      timers.push(
+        window.setTimeout(() => {
+          if (cancelled) return;
+          setStage((current) => {
+            if (current === 'ready') return current;
+            setMessage('The detailed basemap did not load, so a simpler one is being used.');
+            build('raster');
+            return 'starting';
+          });
+        }, 8000),
+      );
+
+      // Raster did not get there either: stop pretending and show the list.
+      timers.push(
+        window.setTimeout(() => {
+          if (cancelled) return;
+          setStage((current) => {
+            if (current === 'ready') return current;
+            setMessage(
+              'Neither basemap finished loading. Everything the map needs answered when tested from this machine, so the likeliest cause is a browser extension or proxy blocking cartocdn.com — the network tab will say which request is stalling. The cases are listed below regardless.',
+            );
+            return 'failed';
+          });
+        }, 20000),
+      );
     }
 
     void boot();
 
     return () => {
       cancelled = true;
-      timeouts.forEach((t) => window.clearTimeout(t));
+      timers.forEach((t) => window.clearTimeout(t));
       map?.remove();
-      mapRef.current = null;
     };
   }, [located, clustered, router]);
 
@@ -267,7 +311,9 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-ink-muted" role="status">
           {located.length} of {cases.length} case{cases.length === 1 ? '' : 's'} positioned
-          {status === 'loading' ? ' · loading map…' : ''}
+          {stage === 'starting' ? ' · starting map…' : ''}
+          {stage === 'style' ? ' · loading tiles…' : ''}
+          {stage === 'ready' && renderer === 'raster' ? ' · simplified basemap' : ''}
         </p>
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-secondary">
           <input
@@ -280,34 +326,34 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         </label>
       </div>
 
-      {status === 'failed' && message ? (
+      {message ? (
         <div className="flex items-start gap-2 rounded-lg border border-edge-strong bg-sunken px-3 py-2.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">The map could not be drawn</p>
+            <p className="text-sm font-medium text-ink">
+              {stage === 'failed' ? 'The map could not be drawn' : 'Falling back to a simpler map'}
+            </p>
             <p className="mt-0.5 text-sm text-ink-secondary">{message}</p>
           </div>
         </div>
       ) : null}
 
-      {/*
-        A failed map is a blank rectangle, which tells nobody anything. Drop the
-        canvas entirely in that case and let the list below carry the data.
-      */}
-      {status !== 'failed' ? (
-        <div
-          ref={container}
-          role="application"
-          aria-label={`Map of ${located.length} cases`}
-          className="h-[560px] w-full overflow-hidden rounded-lg border border-edge bg-sunken"
-        />
-      ) : null}
+      {/* A failed map is a blank rectangle, which tells nobody anything. */}
+      <div
+        ref={container}
+        role="application"
+        aria-label={`Map of ${located.length} cases`}
+        className={
+          stage === 'failed'
+            ? 'hidden'
+            : 'h-[560px] w-full overflow-hidden rounded-lg border border-edge bg-sunken'
+        }
+      />
 
-      {/* The map is not keyboard navigable; this is the same data, reachable.
-          Open by default when there is no map to look at. */}
-      <details open={status === 'failed'} className="rounded-lg border border-edge bg-raised">
+      {/* The map is not keyboard navigable; this is the same data, reachable. */}
+      <details open={stage === 'failed'} className="rounded-lg border border-edge bg-raised">
         <summary className="cursor-pointer px-3 py-2 text-xs text-ink-secondary">
-          {status === 'failed' ? 'Positioned cases' : 'List the positioned cases'}
+          {stage === 'failed' ? 'Positioned cases' : 'List the positioned cases'}
         </summary>
         <ul className="divide-y divide-edge border-t border-edge">
           {located.map((c) => (
@@ -331,12 +377,8 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 }
 
 /** Narrow a GeoJSON geometry to a point position, rather than forcing a cast. */
-function pointCoords(
-  geometry: import('geojson').Geometry,
-): [number, number] | null {
-  return geometry.type === 'Point'
-    ? [geometry.coordinates[0], geometry.coordinates[1]]
-    : null;
+function pointCoords(geometry: import('geojson').Geometry): [number, number] | null {
+  return geometry.type === 'Point' ? [geometry.coordinates[0], geometry.coordinates[1]] : null;
 }
 
 function escapeHtml(value: string): string {
