@@ -41,9 +41,8 @@ export function TopNav({ user }: { user: CurrentUser }) {
       ? [
           {
             label: 'Admin',
-            href: '/admin',
-            enabled: false,
-            note: 'Case type builder — phase 3',
+            href: '/admin/case-types',
+            enabled: true,
           } satisfies NavItem,
         ]
       : []),
