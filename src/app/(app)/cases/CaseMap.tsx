@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { AlertTriangle } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { CaseRow } from './types';
 
@@ -34,6 +35,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
   React.useEffect(() => {
     let cancelled = false;
     let map: import('maplibre-gl').Map | null = null;
+    const timeouts: number[] = [];
 
     async function boot() {
       if (!container.current) return;
@@ -49,6 +51,17 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         return;
       }
       if (cancelled || !container.current) return;
+
+      // MapLibre v5+ requires WebGL 2. Checking first turns an opaque library
+      // failure into a sentence that names the actual problem.
+      const probe = document.createElement('canvas');
+      if (!probe.getContext('webgl2')) {
+        setStatus('failed');
+        setMessage(
+          'This browser cannot provide WebGL 2, which the map needs. Turn on hardware acceleration in the browser settings, or use the list below.',
+        );
+        return;
+      }
 
       const geojson = {
         type: 'FeatureCollection' as const,
@@ -77,16 +90,41 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
-      // A basemap served from someone else's CDN can fail; say so rather than
-      // leaving a grey rectangle.
+      /*
+       * Surface EVERY error, not a hand-picked subset.
+       *
+       * The first version only reported errors whose message matched
+       * /style|tile|fetch|network/. A GPU initialisation failure says none of
+       * those things, so the map sat on "loading map..." forever with a blank
+       * canvas and told the user nothing. A blank box with no explanation is
+       * the worst outcome available; anything the library knows is better.
+       */
       map.on('error', (e) => {
         if (cancelled) return;
-        const msg = (e as { error?: { message?: string } })?.error?.message ?? '';
-        if (/style|tile|fetch|network/i.test(msg)) {
-          setStatus('failed');
-          setMessage('The basemap could not be reached. The case positions are listed below.');
-        }
+        const raw = (e as { error?: { message?: string } })?.error?.message ?? 'Unknown map error';
+        setStatus('failed');
+        setMessage(
+          /webgl|gpu|context/i.test(raw)
+            ? `The map could not start the graphics context (${raw}). This usually means hardware acceleration is switched off in the browser, or the GPU does not support WebGL 2.`
+            : `The map could not load: ${raw}`,
+        );
       });
+
+      // 'load' never firing is its own failure mode, and one no error event
+      // necessarily reports. Do not spin on "loading" indefinitely.
+      const loadTimeout = window.setTimeout(() => {
+        if (cancelled) return;
+        setStatus((current) => {
+          if (current === 'loading') {
+            setMessage(
+              'The map did not finish loading within 15 seconds. The basemap CDN may be blocked on this network.',
+            );
+            return 'failed';
+          }
+          return current;
+        });
+      }, 15000);
+      timeouts.push(loadTimeout);
 
       map.on('load', () => {
         if (cancelled || !map) return;
@@ -197,6 +235,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           });
         }
 
+        window.clearTimeout(loadTimeout);
         setStatus('ready');
       });
     }
@@ -205,6 +244,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 
     return () => {
       cancelled = true;
+      timeouts.forEach((t) => window.clearTimeout(t));
       map?.remove();
       mapRef.current = null;
     };
@@ -241,22 +281,33 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       </div>
 
       {status === 'failed' && message ? (
-        <p className="rounded border border-edge bg-sunken px-3 py-2 text-sm text-ink-secondary">
-          {message}
-        </p>
+        <div className="flex items-start gap-2 rounded-lg border border-edge-strong bg-sunken px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-ink">The map could not be drawn</p>
+            <p className="mt-0.5 text-sm text-ink-secondary">{message}</p>
+          </div>
+        </div>
       ) : null}
 
-      <div
-        ref={container}
-        role="application"
-        aria-label={`Map of ${located.length} cases`}
-        className="h-[560px] w-full overflow-hidden rounded-lg border border-edge bg-sunken"
-      />
+      {/*
+        A failed map is a blank rectangle, which tells nobody anything. Drop the
+        canvas entirely in that case and let the list below carry the data.
+      */}
+      {status !== 'failed' ? (
+        <div
+          ref={container}
+          role="application"
+          aria-label={`Map of ${located.length} cases`}
+          className="h-[560px] w-full overflow-hidden rounded-lg border border-edge bg-sunken"
+        />
+      ) : null}
 
-      {/* The map is not keyboard navigable; this is the same data, reachable. */}
-      <details className="rounded-lg border border-edge bg-raised">
+      {/* The map is not keyboard navigable; this is the same data, reachable.
+          Open by default when there is no map to look at. */}
+      <details open={status === 'failed'} className="rounded-lg border border-edge bg-raised">
         <summary className="cursor-pointer px-3 py-2 text-xs text-ink-secondary">
-          List the positioned cases
+          {status === 'failed' ? 'Positioned cases' : 'List the positioned cases'}
         </summary>
         <ul className="divide-y divide-edge border-t border-edge">
           {located.map((c) => (
