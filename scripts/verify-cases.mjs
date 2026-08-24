@@ -63,6 +63,18 @@ console.log(`AUTH    ${env.NEXT_PUBLIC_SUPABASE_URL}  (${ENV_FILE})`);
 const inv = await cookieFor('ines.vargas@northgate.test');
 const ro = await cookieFor('rosa.ortiz@northgate.test');
 
+// A server left running from an earlier build answers happily and fails these
+// checks for reasons that have nothing to do with the code under test. That has
+// already cost one confusing run, so name it before asserting anything else.
+console.log('\nPREFLIGHT');
+const preflight = await get('/cases', inv);
+if (preflight.status !== 200 || !/Saved views/.test(preflight.body)) {
+  console.log('  FAIL  the server on this port is serving an older build');
+  console.log('        Rebuild and restart it, then run again.');
+  process.exit(1);
+}
+check(true, 'server is serving the current build');
+
 console.log('\nLIST VIEW');
 const list = await get('/cases', inv);
 check(list.status === 200, '/cases returns 200', String(list.status));
@@ -141,7 +153,49 @@ const { error: roInsert } = await asRo
   .insert({ org_id: orgRow.id, case_type_id: types.id, case_number: 'RO-SNEAK' });
 check(!!roInsert, 'and posting straight at the table is refused', roInsert?.code ?? 'NO ERROR');
 
+console.log('\nSAVED VIEWS');
+const asInv = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  auth: { persistSession: false },
+});
+await asInv.auth.signInWithPassword({ email: 'ines.vargas@northgate.test', password: PW });
+const { data: me } = await asInv.auth.getUser();
+const { data: orgForViews } = await svc
+  .from('organizations')
+  .select('id')
+  .eq('slug', 'northgate')
+  .single();
+
+const { error: personalErr } = await asInv.from('saved_views').insert({
+  org_id: orgForViews.id,
+  user_id: me.user.id,
+  name: 'Probe personal view',
+  filters: { county: 'Marion' },
+  columns: [],
+  created_by: me.user.id,
+});
+check(!personalErr, 'an investigator can save a personal view', personalErr?.message ?? '');
+
+const { error: sharedErr } = await asInv.from('saved_views').insert({
+  org_id: orgForViews.id,
+  user_id: null,
+  name: 'Probe sneaky shared',
+  filters: {},
+  is_shared: true,
+  is_locked: true,
+  created_by: me.user.id,
+});
+check(!!sharedErr, 'but cannot create a shared one', sharedErr?.code ?? 'NO ERROR — admins only');
+
+const withView = await get('/cases', inv);
+check(/Probe personal view/.test(withView.body), 'the saved view is pinned beside the list');
+check(/Mine/.test(withView.body), 'and grouped as personal');
+
+const otherUser = await cookieFor('ivo.nakamura@northgate.test');
+const otherSees = await get('/cases', otherUser);
+check(!/Probe personal view/.test(otherSees.body), 'another user cannot see it');
+
 console.log('\nCLEANUP');
+await svc.from('saved_views').delete().like('name', 'Probe %');
 await svc.from('cases').delete().eq('case_number', 'RO-SNEAK');
 const { count } = await svc.from('cases').select('id', { count: 'exact', head: true });
 check(count === 5, 'back to the 5 seeded cases', String(count));
