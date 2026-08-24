@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { Map as MapIcon, Plus, ShieldAlert } from 'lucide-react';
+import { Plus, ShieldAlert } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireUser, can } from '@/lib/auth';
-import { Badge, EmptyState } from '@/components/ui';
-import { StatusPill } from '@/components/ui/StatusPill';
+import { EmptyState } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { CaseFilters } from './CaseFilters';
 import { CaseTable } from './CaseTable';
+import { CaseMap } from './CaseMap';
 import { SavedViews, type SavedViewRow } from './SavedViews';
 import { resolveColumns } from './columns';
 import { CASE_SELECT, type CaseRow } from './types';
@@ -204,7 +204,7 @@ export default async function CasesPage({
             />
           ) : null}
           {view === 'stats' ? <StatsView cases={cases} /> : null}
-          {view === 'map' ? <MapView cases={cases} /> : null}
+          {view === 'map' ? <CaseMap cases={cases} /> : null}
         </div>
       </div>
     </div>
@@ -303,53 +303,5 @@ function Breakdown({
         ))}
       </ul>
     </section>
-  );
-}
-
-/* =================================================================== map === */
-
-function MapView({ cases }: { cases: CaseRow[] }) {
-  const located = cases.filter((c) => c.lat !== null && c.lng !== null);
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-lg border border-dashed border-edge-strong bg-sunken px-6 py-10 text-center">
-        <MapIcon className="mx-auto mb-3 h-6 w-6 text-ink-muted" aria-hidden="true" />
-        <p className="text-base font-medium text-ink">Map view needs a tile provider</p>
-        <p className="mx-auto mt-1 max-w-prose text-sm text-ink-secondary">
-          The coordinates are already here — {located.length} of {cases.length} case
-          {cases.length === 1 ? '' : 's'} carry a position. Rendering them needs a map library and
-          an access token (<code className="font-mono text-xs">NEXT_PUBLIC_MAPBOX_TOKEN</code>), so
-          the clustered map is held until that is in place rather than shipped broken.
-        </p>
-      </div>
-
-      {located.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border border-edge bg-raised">
-          <p className="border-b border-edge bg-sunken px-3 py-2 text-2xs font-medium uppercase tracking-wide text-ink-muted">
-            Located cases
-          </p>
-          <ul className="divide-y divide-edge">
-            {located.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-                <Link
-                  href={`/cases/${c.id}`}
-                  className="tabular font-mono text-xs font-medium text-ink hover:text-accent"
-                >
-                  {c.case_number}
-                </Link>
-                <span className="flex-1 truncate text-ink-secondary">{c.address ?? '—'}</span>
-                <StatusPill label={c.status_label} color={c.status_color} size="sm" />
-                <span className="tabular font-mono text-2xs text-ink-muted">
-                  {c.lat!.toFixed(4)}, {c.lng!.toFixed(4)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <Badge>No case in this result set has coordinates</Badge>
-      )}
-    </div>
   );
 }
