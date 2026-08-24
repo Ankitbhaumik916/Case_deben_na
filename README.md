@@ -37,6 +37,26 @@ Demo accounts are created by `scripts/seed-demo.ts`, one per role
 (`super_admin`, `admin`, `reviewer`, two `investigator`s, `read_only`), all with
 the password in `SEED_DEMO_PASSWORD`.
 
+### Adding a real account
+
+There is **no sign-up page, on purpose**. Access is account + org membership +
+role, and only the last two grant anything: every RLS policy keys off
+`user_roles`, so an account with no role signs in successfully and sees "You are
+not a member of any organisation". Self-registration into a forensic case system
+is not a feature.
+
+```bash
+npm run user:create -- --email jo@agency.gov --name "Jo Mensah" --role investigator
+npm run user:create -- --email jo@agency.gov --role admin --env .env.hosted.local
+```
+
+The script creates the auth user, links the profile to the organisation, and
+grants the role — all three, in that order. Doing it by hand in the Supabase
+dashboard covers only the first two; the missing `user_roles` row is why a
+hand-made account appears to work and then shows an empty portal.
+
+`/admin/users` (phase 12) replaces this with a proper invite flow.
+
 ### Verifying the database without Docker
 
 The schema, its policies and the seed are tested against

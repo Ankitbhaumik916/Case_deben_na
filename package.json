@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:hosted": "vitest run --config vitest.hosted.config.ts",
-    "verify:routes": "node scripts/verify-routes.mjs"
+    "verify:routes": "node scripts/verify-routes.mjs",
+    "user:create": "tsx scripts/create-user.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
