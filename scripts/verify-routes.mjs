@@ -60,6 +60,17 @@ check(
   'no hardcoded dev host leaked into the markup',
 );
 
+// ----------------------------------------------------------- step 2b: /signup
+console.log('');
+console.log('STEP 2b registration is reachable and does what it says');
+const signupPage = await get('/signup');
+check(signupPage.status === 200, '/signup returns 200', String(signupPage.status));
+check(
+  /Create your account/.test(signupPage.body) || /Registration is closed/.test(signupPage.body),
+  'renders either the form or the closed notice',
+);
+check(hrefs.includes('/signup'), 'the landing CTA points at /signup');
+
 // ------------------------------------------------------------ step 3: /login
 console.log('\nSTEP 3  GET /login  (signed out)');
 const login = await get('/login');
@@ -125,6 +136,9 @@ check(
 const rootIn = await get('/', cookieHeader);
 check(rootIn.status === 200, '/ still serves marketing even when signed in', String(rootIn.status));
 check(/Every Case Type/.test(rootIn.body), 'and it is the landing page');
+
+const signupIn = await get('/signup', cookieHeader);
+check(signupIn.status === 307, '/signup bounces a signed-in user away', String(signupIn.status));
 
 const missing = await get('/cases', cookieHeader);
 check(missing.status === 404, 'an unbuilt app route 404s rather than erroring', String(missing.status));

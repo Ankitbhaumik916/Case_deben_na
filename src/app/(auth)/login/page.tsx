@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { LoginForm } from './LoginForm';
 
 export const metadata = { title: 'Sign in' };
@@ -53,6 +54,13 @@ export default function LoginPage({
           </p>
 
           <LoginForm next={searchParams.next} />
+
+          <p className="mt-6 text-sm text-ink-secondary">
+            Need an account?{' '}
+            <Link href="/signup" className="font-medium text-accent hover:text-accent-hover">
+              Create one
+            </Link>
+          </p>
 
           {SHOW_DEMO_ACCOUNTS ? (
             <div className="mt-8 rounded-lg border border-edge bg-sunken p-3">

@@ -10,7 +10,7 @@ import type { Database } from '@/types/database';
  * '/landing' would bounce the landing page's own CSS to /login and serve it
  * unstyled.
  */
-const PUBLIC_PATHS = ['/', '/landing', '/login', '/auth'];
+const PUBLIC_PATHS = ['/', '/landing', '/login', '/signup', '/auth'];
 
 /** Where a signed-in user belongs. The app home is no longer '/'. */
 export const APP_HOME = '/portal';
@@ -62,7 +62,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === '/login') {
+  if (user && (pathname === '/login' || pathname === '/signup')) {
     const url = request.nextUrl.clone();
     url.pathname = APP_HOME;
     url.search = '';

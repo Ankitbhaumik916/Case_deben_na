@@ -37,13 +37,31 @@ Demo accounts are created by `scripts/seed-demo.ts`, one per role
 (`super_admin`, `admin`, `reviewer`, two `investigator`s, `read_only`), all with
 the password in `SEED_DEMO_PASSWORD`.
 
-### Adding a real account
+### Adding accounts
 
-There is **no sign-up page, on purpose**. Access is account + org membership +
-role, and only the last two grant anything: every RLS policy keys off
-`user_roles`, so an account with no role signs in successfully and sees "You are
-not a member of any organisation". Self-registration into a forensic case system
-is not a feature.
+An account grants nothing on its own. Access is account + org membership +
+role, and only the last two open anything: every RLS policy keys off
+`user_roles`, so an account with no role signs in successfully and lands on
+"You are not a member of any organisation".
+
+**Self-service registration** at `/signup` creates all three. While it is on,
+anyone who can reach that page gets `SIGNUP_DEFAULT_ROLE` inside
+`SIGNUP_ORG_SLUG` and can read that organisation's case files — fine for an open
+demo, wrong for a real tenant:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SIGNUP_ENABLED` | `true` | `false` closes registration; `/signup` shows a notice |
+| `SIGNUP_DEFAULT_ROLE` | `investigator` | `read_only` is the safe choice for a public demo |
+| `SIGNUP_ORG_SLUG` | the only org | required once a second organisation exists |
+
+Registration uses the admin API with `email_confirm: true`, so there is no inbox
+round trip — and therefore **no proof the address belongs to the person**. It
+also cannot hide whether an address is already registered. Both are closed by
+the invite flow in `/admin/users` (phase 13); until then, treat `/signup` as a
+demo affordance.
+
+**From the command line**, which works regardless of the switches above:
 
 ```bash
 npm run user:create -- --email jo@agency.gov --name "Jo Mensah" --role investigator
@@ -135,6 +153,7 @@ One Next project, one deployable output.
 |---|---|---|
 | `/` | marketing page (static, `public/landing/`) | public |
 | `/login` | sign in | public; a signed-in visitor is bounced to `/portal` |
+| `/signup` | self-service registration | public, and only while `SIGNUP_ENABLED` |
 | `/portal` | the app home | required |
 | `/cases`, `/pipeline`, … | later phases | required |
 
@@ -145,7 +164,8 @@ absent, route gating is not running and `requireUser()` in the `(app)` layout is
 the only thing standing between a visitor and the app.
 
 ```bash
-npm run verify:routes   # / -> click Sign In -> /login -> sign in -> /portal
+npm run verify:routes   # / -> Get Started -> /signup -> /login -> /portal
+npm run verify:signup   # registration, roles, duplicates, audit; cleans up after itself
 ```
 
 ## Design
