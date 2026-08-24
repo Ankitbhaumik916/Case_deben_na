@@ -21,8 +21,12 @@ export type LocationResult =
       label?: string;
       /** The form of the address that actually matched. */
       matchedOn?: string;
-      /** False when a coarser form had to be used than what was asked. */
-      exact?: boolean;
+      /** How precise the matched feature is, in plain words. */
+      precision?: string;
+      /** What kind of thing was matched — "city", "road", "railway halt". */
+      kind?: string;
+      /** True only for a genuine address-level match. */
+      precise?: boolean;
     }
   | { ok: false; error: string };
 
@@ -158,16 +162,43 @@ export async function geocodeCase(caseId: string): Promise<LocationResult> {
       lat: string;
       lon: string;
       display_name: string;
+      place_rank?: number;
+      class?: string;
+      type?: string;
+      addresstype?: string;
     }[];
 
     if (results?.length) {
+      const hit = results[0];
+      const rank = hit.place_rank ?? 0;
+
+      /*
+       * Report what the gazetteer actually resolved to, not merely whether the
+       * first query matched. Those are different things, and conflating them
+       * misleads: "potheri, Chengalpattu, Tamil Nadu" comes back at rank 30,
+       * which looks pin-sharp — but it is a railway halt named Potheri, not
+       * anybody's address. Saying so is the difference between a coordinate
+       * someone can rely on and one they merely believe.
+       */
+      const precision =
+        rank >= 30 ? 'a specific place' :
+        rank >= 26 ? 'a street' :
+        rank >= 20 ? 'a neighbourhood' :
+        rank >= 16 ? 'a town or city' :
+        'a district or larger';
+
+      const kind = (hit.addresstype ?? hit.type ?? hit.class ?? 'place').replace(/_/g, ' ');
+      const addressLike = ['building', 'house', 'place', 'address', 'amenity', 'shop', 'office'];
+
       return {
         ok: true,
-        lat: Number(results[0].lat),
-        lng: Number(results[0].lon),
-        label: results[0].display_name,
+        lat: Number(hit.lat),
+        lng: Number(hit.lon),
+        label: hit.display_name,
         matchedOn: query,
-        exact: index === 0,
+        precision,
+        kind,
+        precise: rank >= 30 && addressLike.includes(kind),
       };
     }
   }

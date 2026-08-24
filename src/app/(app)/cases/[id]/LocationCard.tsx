@@ -37,7 +37,9 @@ export function LocationCard({
     lng: number;
     label: string;
     matchedOn: string;
-    exact: boolean;
+    precision: string;
+    kind: string;
+    precise: boolean;
   } | null>(null);
 
   const placed = lat !== null && lng !== null;
@@ -57,7 +59,9 @@ export function LocationCard({
       lng: result.lng!,
       label: result.label ?? '',
       matchedOn: result.matchedOn ?? '',
-      exact: result.exact ?? true,
+      precision: result.precision ?? 'an area',
+      kind: result.kind ?? 'place',
+      precise: result.precise ?? false,
     });
   }
 
@@ -187,13 +191,21 @@ export function LocationCard({
           <p className="tabular mt-0.5 font-mono text-xs text-ink-muted">
             {suggestion.lat.toFixed(5)}, {suggestion.lng.toFixed(5)}
           </p>
-          {!suggestion.exact ? (
-            <p className="mt-1.5 rounded border border-edge-strong bg-raised px-2 py-1.5 text-xs text-ink-secondary">
-              The full address did not match, so it fell back to{' '}
-              <span className="font-medium text-ink">{suggestion.matchedOn}</span>. That is an
-              area, not a doorstep — check it before accepting, or type exact coordinates.
-            </p>
-          ) : null}
+          <p className="mt-1.5 rounded border border-edge-strong bg-raised px-2 py-1.5 text-xs text-ink-secondary">
+            Matched <span className="font-medium text-ink">{suggestion.precision}</span> — a{' '}
+            <span className="font-medium text-ink">{suggestion.kind}</span>
+            {suggestion.matchedOn ? (
+              <>
+                {' '}
+                — searching for{' '}
+                <span className="font-medium text-ink">{suggestion.matchedOn}</span>
+              </>
+            ) : null}
+            .{' '}
+            {suggestion.precise
+              ? 'That is address-level.'
+              : 'That is not the doorstep. Check it on a map before accepting, or paste exact coordinates below — right-click the spot in any map app to copy them.'}
+          </p>
           <div className="mt-2 flex gap-2">
             <Button size="sm" loading={busy} onClick={() => void commit(suggestion.lat, suggestion.lng)}>
               Use this
