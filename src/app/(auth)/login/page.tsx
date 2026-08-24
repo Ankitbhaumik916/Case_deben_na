@@ -2,6 +2,23 @@ import { LoginForm } from './LoginForm';
 
 export const metadata = { title: 'Sign in' };
 
+/**
+ * Two independent gates, both required.
+ *
+ * NODE_ENV is inlined by the compiler, so in any production build this folds to
+ * `false` and the whole block — emails included — is dead-code eliminated rather
+ * than merely hidden at runtime.
+ *
+ * The explicit flag then closes the one remaining hole: running `next dev` as a
+ * deployment. Development mode alone is no longer enough; someone has to ask for
+ * the panel. It must carry the NEXT_PUBLIC_ prefix to stay a compile-time
+ * constant — a plain server-only var would be read at runtime and would cost us
+ * the elimination above.
+ */
+const SHOW_DEMO_ACCOUNTS =
+  process.env.NODE_ENV !== 'production' &&
+  process.env.NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS === '1';
+
 const DEMO_ACCOUNTS = [
   ['sam.okafor@northgate.test', 'Super admin'],
   ['ada.lindqvist@northgate.test', 'Administrator'],
@@ -37,7 +54,7 @@ export default function LoginPage({
 
           <LoginForm next={searchParams.next} />
 
-          {process.env.NODE_ENV !== 'production' ? (
+          {SHOW_DEMO_ACCOUNTS ? (
             <div className="mt-8 rounded-lg border border-edge bg-sunken p-3">
               <p className="text-2xs font-medium uppercase tracking-wide text-ink-muted">
                 Demo accounts (development only)
