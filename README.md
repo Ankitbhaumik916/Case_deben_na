@@ -18,7 +18,8 @@ rendered dynamically.
 | 2 | Auth, portal shell, nav | **done** |
 | — | Marketing landing page at `/` | **done** |
 | 3 | Admin → Case Type Builder | **done** |
-| 4 | Case list, filters, create flow | list/stats/create **done**; map + saved views pending |
+| 4 | Case list, filters, map, saved views | **done** (per-field filters deferred) |
+| 5 | Case workspace — dynamic fields, autosave | **done** |
 | 4–14 | See the build plan | not started |
 
 ---
@@ -173,6 +174,7 @@ npm run verify:routes   # / -> Get Started -> /signup -> /login -> /portal
 npm run verify:signup   # registration, roles, duplicates, audit; cleans up after itself
 npm run verify:builder  # an admin builds a discipline, an investigator works a case of it
 npm run verify:cases    # list, search, filters, stats, create flow, read-only gating
+npm run verify:workspace # dynamic fields, autosave, completion, audit trail
 ```
 
 ## Design

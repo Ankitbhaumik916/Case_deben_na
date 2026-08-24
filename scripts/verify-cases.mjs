@@ -44,13 +44,19 @@ async function cookieFor(email) {
   return [...jar].map(([n, v]) => `${n}=${v}`).join('; ');
 }
 
-// React separates adjacent text nodes with an empty comment in SSR output, so
-// "New {name}" ships as "New <!-- -->Fire Investigation". Strip those before
-// matching, or every assertion spanning an interpolation fails for no reason.
 const get = async (path, cookie) => {
   const r = await fetch(BASE + path, { headers: cookie ? { cookie } : {}, redirect: 'manual' });
   const raw = r.status < 300 ? await r.text() : '';
-  return { status: r.status, location: r.headers.get('location'), body: raw.replace(/<!--\s*-->/g, '') };
+  // Two things have to go before matching:
+  //   - React separates adjacent text nodes with an empty comment, so
+  //     "New {name}" ships as "New <!-- -->Fire Investigation".
+  //   - Next serialises every server component's props into self.__next_f.
+  //     Without dropping those, an assertion passes on data that was sent but
+  //     never rendered, which is exactly the thing these checks exist to catch.
+  const visible = raw
+    .replace(/<script[^>]*>self\.__next_f[\s\S]*?<\/script>/g, '')
+    .replace(/<!--\s*-->/g, '');
+  return { status: r.status, location: r.headers.get('location'), body: visible };
 };
 
 const svc = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -112,16 +118,17 @@ check(/By status/.test(stats.body) && /By county/.test(stats.body), 'breaks down
 console.log('\nMAP VIEW');
 const map = await get('/cases?view=map', inv);
 check(map.status === 200, 'map renders', String(map.status));
-check(/needs a tile provider/.test(map.body), 'says plainly that it is not built rather than showing an empty box');
-check(/carry a position/.test(map.body), 'and reports how many cases have coordinates');
+check(/\d+ of \d+ cases? positioned/.test(map.body), 'reports how many cases are placed');
+check(/Group nearby cases/.test(map.body), 'offers the clustering toggle');
+check(/List the positioned cases/.test(map.body), 'and a keyboard-reachable list of the same data');
 
 console.log('\nCASE DETAIL');
 const { data: one } = await svc.from('cases').select('id').eq('case_number', 'NG-2026-0201').single();
 const detail = await get(`/cases/${one.id}`, inv);
 check(detail.status === 200, 'a case opens', String(detail.status));
-check(/Area of Origin/.test(detail.body), 'renders sections from the case type');
-check(/Fire Classification/.test(detail.body), 'renders its configured fields');
-check(/Not recorded/.test(detail.body), 'unanswered fields say so');
+check(/Area of Origin/.test(detail.body), 'sidebar lists the configured sections');
+check(/Structure Type/.test(detail.body), 'renders the open section fields');
+check(/Changes save as you go/.test(detail.body), 'and autosaves rather than needing a save button');
 
 console.log('\nCREATE FLOW');
 const picker = await get('/cases/new', inv);

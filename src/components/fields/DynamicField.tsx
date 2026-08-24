@@ -1,0 +1,309 @@
+'use client';
+
+import * as React from 'react';
+import { Paperclip, PenLine } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+/**
+ * One component, every field type.
+ *
+ * This is the switch that makes the product no-code: a case type defines its
+ * fields as rows, and this renders whatever those rows say. Adding a discipline
+ * never touches this file. Adding a new KIND of question is the only reason to,
+ * and then it is one case here plus one value in the field_type enum.
+ *
+ * Values are jsonb, so a scalar is stored as a scalar, a multiselect as an
+ * array, and a file reference as an object. The renderer owns the mapping in
+ * both directions.
+ */
+
+export interface FieldDef {
+  id: string;
+  key: string;
+  label: string;
+  fieldType: string;
+  helpText: string | null;
+  placeholder: string | null;
+  width: string;
+  required: boolean;
+  choices: { value: string; label: string }[];
+  options: Record<string, unknown>;
+}
+
+export interface PersonOption {
+  id: string;
+  fullName: string;
+  role: string;
+}
+
+export function DynamicField({
+  field,
+  value,
+  people,
+  disabled,
+  onChange,
+  onCommit,
+}: {
+  field: FieldDef;
+  value: unknown;
+  people: PersonOption[];
+  disabled?: boolean;
+  /** Local edit — cheap, every keystroke. */
+  onChange: (value: unknown) => void;
+  /** Persist — on blur, or immediately for controls with no meaningful blur. */
+  onCommit: (value: unknown) => void;
+}) {
+  const id = `field-${field.id}`;
+  const describedBy = field.helpText ? `${id}-help` : undefined;
+
+  const base =
+    'w-full rounded border border-edge-strong bg-raised px-3 text-base text-ink placeholder:text-ink-muted disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-muted';
+
+  function control() {
+    switch (field.fieldType) {
+      case 'textarea':
+        return (
+          <textarea
+            id={id}
+            rows={4}
+            disabled={disabled}
+            value={asText(value)}
+            placeholder={field.placeholder ?? undefined}
+            aria-describedby={describedBy}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={(e) => onCommit(e.target.value)}
+            className={cn(base, 'py-2 leading-relaxed')}
+          />
+        );
+
+      case 'number':
+        return (
+          <input
+            id={id}
+            type="number"
+            disabled={disabled}
+            value={value === null || value === undefined ? '' : String(value)}
+            placeholder={field.placeholder ?? undefined}
+            step={(field.options.step as number | undefined) ?? undefined}
+            aria-describedby={describedBy}
+            onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+            onBlur={(e) => onCommit(e.target.value === '' ? null : Number(e.target.value))}
+            className={cn(base, 'tabular h-9 font-mono')}
+          />
+        );
+
+      case 'date':
+        return (
+          <input
+            id={id}
+            type="date"
+            disabled={disabled}
+            value={asText(value).slice(0, 10)}
+            aria-describedby={describedBy}
+            // A date picker has no useful blur: commit the moment it changes.
+            onChange={(e) => {
+              onChange(e.target.value || null);
+              onCommit(e.target.value || null);
+            }}
+            className={cn(base, 'h-9 w-48')}
+          />
+        );
+
+      case 'boolean':
+        return (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+            <input
+              id={id}
+              type="checkbox"
+              disabled={disabled}
+              checked={value === true}
+              aria-describedby={describedBy}
+              onChange={(e) => {
+                onChange(e.target.checked);
+                onCommit(e.target.checked);
+              }}
+              className="h-4 w-4 cursor-pointer accent-[color:var(--accent)]"
+            />
+            {value === true ? 'Yes' : 'No'}
+          </label>
+        );
+
+      case 'select':
+        return (
+          <select
+            id={id}
+            disabled={disabled}
+            value={asText(value)}
+            aria-describedby={describedBy}
+            onChange={(e) => {
+              const next = e.target.value || null;
+              onChange(next);
+              onCommit(next);
+            }}
+            className={cn(base, 'h-9')}
+          >
+            <option value="">Not recorded</option>
+            {field.choices.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        );
+
+      case 'multiselect': {
+        const selected = Array.isArray(value) ? (value as string[]) : [];
+        return (
+          <div
+            role="group"
+            aria-labelledby={`${id}-label`}
+            aria-describedby={describedBy}
+            className="flex flex-wrap gap-x-4 gap-y-1.5"
+          >
+            {field.choices.map((c) => (
+              <label
+                key={c.value}
+                className={cn(
+                  'flex items-center gap-1.5 text-sm text-ink-secondary',
+                  disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={selected.includes(c.value)}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...selected, c.value]
+                      : selected.filter((v) => v !== c.value);
+                    onChange(next);
+                    onCommit(next);
+                  }}
+                  className="h-3.5 w-3.5 cursor-pointer accent-[color:var(--accent)]"
+                />
+                {c.label}
+              </label>
+            ))}
+            {field.choices.length === 0 ? (
+              <p className="text-sm text-ink-muted">
+                No choices configured — an administrator sets these on the case type.
+              </p>
+            ) : null}
+          </div>
+        );
+      }
+
+      case 'person_ref':
+        return (
+          <select
+            id={id}
+            disabled={disabled}
+            value={asText(value)}
+            aria-describedby={describedBy}
+            onChange={(e) => {
+              const next = e.target.value || null;
+              onChange(next);
+              onCommit(next);
+            }}
+            className={cn(base, 'h-9')}
+          >
+            <option value="">Not recorded</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.fullName} ({p.role})
+              </option>
+            ))}
+            {people.length === 0 ? <option disabled>No people on this case yet</option> : null}
+          </select>
+        );
+
+      case 'computed':
+        return (
+          <p className="flex h-9 items-center text-sm italic text-ink-muted">
+            {isFilled(value) ? asText(value) : 'Calculated automatically'}
+          </p>
+        );
+
+      // Storage-backed types. Deliberately inert rather than a broken uploader:
+      // buckets, signed URLs and upload progress are the media library, phase 8.
+      case 'photo':
+      case 'file':
+      case 'signature':
+        return (
+          <div className="flex items-center gap-2 rounded border border-dashed border-edge-strong bg-sunken px-3 py-2.5 text-sm text-ink-muted">
+            {field.fieldType === 'signature' ? (
+              <PenLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
+            <span>
+              {field.fieldType === 'signature' ? 'Signature capture' : 'Uploads'} arrive with the
+              media library.
+              {isFilled(value) ? ' Something is already recorded against this field.' : ''}
+            </span>
+          </div>
+        );
+
+      default:
+        return (
+          <input
+            id={id}
+            type="text"
+            disabled={disabled}
+            value={asText(value)}
+            placeholder={field.placeholder ?? undefined}
+            aria-describedby={describedBy}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={(e) => onCommit(e.target.value)}
+            className={cn(base, 'h-9')}
+          />
+        );
+    }
+  }
+
+  const usesLabelElement = !['multiselect', 'boolean'].includes(field.fieldType);
+
+  return (
+    <div
+      className={cn(
+        field.width === 'half' && 'sm:col-span-3',
+        field.width === 'third' && 'sm:col-span-2',
+        (!field.width || field.width === 'full') && 'sm:col-span-6',
+      )}
+    >
+      {usesLabelElement ? (
+        <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">
+          {field.label}
+          {field.required ? <span className="text-danger"> *</span> : null}
+        </label>
+      ) : (
+        <p id={`${id}-label`} className="mb-1.5 block text-sm font-medium text-ink">
+          {field.label}
+          {field.required ? <span className="text-danger"> *</span> : null}
+        </p>
+      )}
+
+      {control()}
+
+      {field.helpText ? (
+        <p id={`${id}-help`} className="mt-1 text-xs text-ink-muted">
+          {field.helpText}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function asText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  return String(value);
+}
+
+export function isFilled(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as object).length > 0;
+  return true;
+}
