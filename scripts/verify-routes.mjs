@@ -12,10 +12,19 @@
 import { readFileSync } from 'node:fs';
 import { createServerClient } from '@supabase/ssr';
 
-const BASE = process.env.VERIFY_BASE_URL || 'http://127.0.0.1:3100';
+function arg(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > -1 ? process.argv[i + 1] : undefined;
+}
+
+const BASE = arg('base') || process.env.VERIFY_BASE_URL || 'http://127.0.0.1:3100';
+
+// The sign-in step talks to whichever Supabase project the target site uses,
+// so point this at .env.hosted.local when checking a deployment.
+const ENV_FILE = arg('env') || '.env.local';
 
 const env = {};
-for (const l of readFileSync('.env.local', 'utf8').split(/\r?\n/)) {
+for (const l of readFileSync(ENV_FILE, 'utf8').split(/\r?\n/)) {
   const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
   if (m) env[m[1]] = m[2].trim();
 }
@@ -36,6 +45,9 @@ async function get(path, cookie) {
 }
 
 // ---------------------------------------------------------------- step 1: /
+console.log(`
+TARGET  ${BASE}`);
+console.log(`AUTH    ${env.NEXT_PUBLIC_SUPABASE_URL}  (from ${ENV_FILE})`);
 console.log('\nSTEP 1  GET /  (the landing page, no session)');
 const root = await get('/');
 check(root.status === 200, 'returns 200', String(root.status));
