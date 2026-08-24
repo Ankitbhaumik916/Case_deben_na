@@ -16,7 +16,8 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:hosted": "vitest run --config vitest.hosted.config.ts"
+    "test:hosted": "vitest run --config vitest.hosted.config.ts",
+    "verify:routes": "node scripts/verify-routes.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

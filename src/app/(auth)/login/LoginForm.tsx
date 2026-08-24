@@ -11,9 +11,12 @@ import { Button } from '@/components/ui';
  * ?next=https://evil.example link cannot turn the login page into an open
  * redirect.
  */
+const APP_HOME = '/portal';
+
 function safeNext(next: string | undefined): string {
-  if (!next) return '/';
-  if (!next.startsWith('/') || next.startsWith('//')) return '/';
+  if (!next) return APP_HOME;
+  // '/' is the marketing page, not the app — never land a fresh sign-in there.
+  if (!next.startsWith('/') || next.startsWith('//') || next === '/') return APP_HOME;
   return next;
 }
 

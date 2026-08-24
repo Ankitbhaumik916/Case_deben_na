@@ -9,7 +9,7 @@ import { can, type CurrentUser } from '@/lib/auth';
 function Wordmark() {
   return (
     <Link
-      href="/"
+      href="/portal"
       className="flex items-center gap-2 rounded text-ink-inverse transition-opacity duration-150 hover:opacity-85"
     >
       <span
@@ -27,7 +27,7 @@ export function TopNav({ user }: { user: CurrentUser }) {
   const rank = user.activeOrg?.rank ?? 0;
 
   const items: NavItem[] = [
-    { label: 'Portal', href: '/', enabled: true },
+    { label: 'Portal', href: '/portal', enabled: true },
     { label: 'Cases', href: '/cases', enabled: false, note: 'Case list — phase 4' },
     { label: 'Pipeline', href: '/pipeline', enabled: false, note: 'Kanban board — phase 6' },
     { label: 'Reports', href: '/reports', enabled: false, note: 'Analytics — phase 12' },

@@ -16,6 +16,7 @@ rendered dynamically.
 |---|---|---|
 | 1 | Database schema, RLS, seed | **done** |
 | 2 | Auth, portal shell, nav | **done** |
+| — | Marketing landing page at `/` | **done** |
 | 3 | Admin → Case Type Builder | next |
 | 4–14 | See the build plan | not started |
 
@@ -106,6 +107,27 @@ retention_schedules  per org / per case type
 
 ---
 
+## Routes
+
+One Next project, one deployable output.
+
+| Route | Serves | Auth |
+|---|---|---|
+| `/` | marketing page (static, `public/landing/`) | public |
+| `/login` | sign in | public; a signed-in visitor is bounced to `/portal` |
+| `/portal` | the app home | required |
+| `/cases`, `/pipeline`, … | later phases | required |
+
+`middleware.ts` **must sit at `src/middleware.ts`**, not the repo root — with a
+`src/` directory Next looks for it there and silently ignores a root-level one.
+`next build` prints a `ƒ Middleware` line when it is wired up; if that line is
+absent, route gating is not running and `requireUser()` in the `(app)` layout is
+the only thing standing between a visitor and the app.
+
+```bash
+npm run verify:routes   # / -> click Sign In -> /login -> sign in -> /portal
+```
+
 ## Design
 
 The palette is deliberately near-monochrome — warm paper, deep ink chrome, one
@@ -121,8 +143,10 @@ identifier so case and evidence numbers align in a column.
 
 ```
 src/app/               App Router: (auth) sign-in, (app) authenticated shell
+src/middleware.ts      session refresh + route gating (MUST live under src/)
 src/lib/               supabase clients, auth/session, role vocabulary
 src/components/        nav shell and UI primitives
+public/landing/        static marketing page, rewritten onto /
 supabase/migrations/   ordered schema (0001 … 0015)
 supabase/seed.sql      organisation, statuses, two case type templates
 scripts/seed-demo.ts   auth users and demo cases via the admin API

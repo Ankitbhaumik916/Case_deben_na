@@ -2,8 +2,18 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import type { Database } from '@/types/database';
 
-/** Routes reachable without a session. */
-const PUBLIC_PATHS = ['/login', '/auth'];
+/**
+ * Routes reachable without a session.
+ *
+ * '/' is the marketing page and '/landing' holds its stylesheet, script and
+ * images. Those asset requests pass through this middleware too, so omitting
+ * '/landing' would bounce the landing page's own CSS to /login and serve it
+ * unstyled.
+ */
+const PUBLIC_PATHS = ['/', '/landing', '/login', '/auth'];
+
+/** Where a signed-in user belongs. The app home is no longer '/'. */
+export const APP_HOME = '/portal';
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -54,7 +64,7 @@ export async function updateSession(request: NextRequest) {
 
   if (user && pathname === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = APP_HOME;
     url.search = '';
     return NextResponse.redirect(url);
   }
