@@ -9,26 +9,28 @@ import type { CaseRow } from './types';
 /**
  * Clustered case map.
  *
- * Two basemaps, tried in order, because one of them failing is not hypothetical
- * — it happened, silently, on the first machine this ran on:
+ * Raster basemap, on purpose.
  *
- *   1. CARTO Positron, vector. Better looking, but it pulls a style document,
- *      a sprite sheet, glyph ranges and vector tiles from a second host, and
- *      decodes them on the GPU. Four things to go wrong.
- *   2. CARTO Positron raster. One tile URL, no sprite, no glyphs, no vector
- *      decoding. Far less to block or choke on.
+ * The vector version of the same CARTO style was the first choice and it does
+ * look better, but it pulls a style document, a sprite sheet and glyph ranges
+ * from a second host and then decodes vector tiles on the GPU. On the first
+ * machine this ran on it stalled indefinitely — every one of those URLs
+ * answered in under 200ms from a shell on the same network, so something in
+ * the browser was filtering them. A basemap that fails on the developer's own
+ * laptop is not a basemap.
  *
- * If the vector map has not reported itself loaded within eight seconds the
- * component tears it down and rebuilds on raster, and says which one it ended
- * up using. Cluster counts are drawn as text only on the vector style, because
- * a symbol layer needs glyphs — on raster the clusters are sized circles you
- * click to expand, which is a small loss next to no map at all.
+ * This asks for one thing: PNG tiles. No style document, no sprite, no glyphs,
+ * no vector decoding. Visually it is the same Positron design.
+ *
+ * Because there are no glyphs there is no symbol layer, so cluster counts are
+ * drawn as DOM markers rather than map labels. That removes the last dependency
+ * on a font endpoint and keeps the numbers.
+ *
+ * To go back to vector, point BASEMAP at the style.json and re-add a symbol
+ * layer — but read the paragraph above first.
  */
 
-const VECTOR_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-
-/** Inline, so it depends on a tile endpoint and nothing else. */
-const RASTER_STYLE = {
+const BASEMAP = {
   version: 8 as const,
   sources: {
     basemap: {
@@ -45,13 +47,12 @@ const RASTER_STYLE = {
   layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
 };
 
-type Stage = 'starting' | 'style' | 'ready' | 'failed';
+type Stage = 'starting' | 'ready' | 'failed';
 
 export function CaseMap({ cases }: { cases: CaseRow[] }) {
   const router = useRouter();
   const container = React.useRef<HTMLDivElement>(null);
   const [stage, setStage] = React.useState<Stage>('starting');
-  const [renderer, setRenderer] = React.useState<'vector' | 'raster' | null>(null);
   const [clustered, setClustered] = React.useState(true);
   const [message, setMessage] = React.useState<string | null>(null);
 
@@ -65,7 +66,8 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 
     let cancelled = false;
     let map: import('maplibre-gl').Map | null = null;
-    const timers: number[] = [];
+    const labels = new Map<number, import('maplibre-gl').Marker>();
+    let timeout: number | undefined;
 
     async function boot() {
       if (!container.current) return;
@@ -108,7 +110,88 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         })),
       };
 
-      function addOverlay(target: import('maplibre-gl').Map, mode: 'vector' | 'raster') {
+      const target = new maplibregl.Map({
+        container: container.current,
+        style: BASEMAP,
+        center: [-86.15, 39.0],
+        zoom: 4,
+        attributionControl: { compact: true },
+      });
+      map = target;
+
+      target.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+      // Report anything the library knows. An earlier version filtered errors by
+      // message and swallowed the one that actually happened.
+      target.on('error', (e) => {
+        if (cancelled) return;
+        const raw = (e as { error?: { message?: string } })?.error?.message ?? 'unknown error';
+        setStage('failed');
+        setMessage(
+          /webgl|gpu|context/i.test(raw)
+            ? `The graphics context failed: ${raw}. Hardware acceleration may be switched off.`
+            : `The basemap could not be drawn: ${raw}`,
+        );
+      });
+
+      // 'load' never firing is its own failure mode, and no error event
+      // necessarily reports it.
+      timeout = window.setTimeout(() => {
+        if (cancelled) return;
+        setStage((current) => {
+          if (current === 'ready') return current;
+          setMessage(
+            'The map tiles did not arrive. Everything it needs answered when tested from this machine, so a browser extension or proxy filtering cartocdn.com is the likeliest cause — the network tab will name the stalled request. The cases are listed below regardless.',
+          );
+          return 'failed';
+        });
+      }, 12000);
+
+      /**
+       * Cluster counts as DOM markers.
+       *
+       * A symbol layer would be less code, but it needs glyphs from a font
+       * endpoint — one more request to be blocked, which is the failure this
+       * whole component is working around. Markers are plain HTML and cost
+       * nothing extra to fetch.
+       */
+      function syncLabels() {
+        if (cancelled || !map) return;
+
+        const seen = new Set<number>();
+        if (clustered) {
+          for (const feature of map.queryRenderedFeatures({ layers: ['clusters'] })) {
+            const id = feature.properties?.cluster_id as number | undefined;
+            const at = pointCoords(feature.geometry);
+            if (id === undefined || !at) continue;
+            seen.add(id);
+
+            let marker = labels.get(id);
+            if (!marker) {
+              const el = document.createElement('div');
+              el.className = 'fb-cluster-count';
+              marker = new maplibregl.Marker({ element: el }).setLngLat(at).addTo(map);
+              labels.set(id, marker);
+            }
+            marker.setLngLat(at);
+            marker.getElement().textContent = String(
+              feature.properties?.point_count_abbreviated ?? feature.properties?.point_count ?? '',
+            );
+          }
+        }
+
+        for (const [id, marker] of labels) {
+          if (!seen.has(id)) {
+            marker.remove();
+            labels.delete(id);
+          }
+        }
+      }
+
+      target.on('load', () => {
+        if (cancelled) return;
+        window.clearTimeout(timeout);
+
         target.addSource('cases', {
           type: 'geojson',
           data: geojson,
@@ -129,19 +212,6 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
             'circle-stroke-color': '#ffffff',
           },
         });
-
-        // A symbol layer needs glyphs, which the raster style deliberately does
-        // not pull. Clusters stay clickable either way.
-        if (mode === 'vector') {
-          target.addLayer({
-            id: 'cluster-count',
-            type: 'symbol',
-            source: 'cases',
-            filter: ['has', 'point_count'],
-            layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 },
-            paint: { 'text-color': '#ffffff' },
-          });
-        }
 
         target.addLayer({
           id: 'case-points',
@@ -209,87 +279,24 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
             target.getCanvas().style.cursor = '';
           });
         }
-      }
 
-      function build(mode: 'vector' | 'raster') {
-        map?.remove();
-        setStage('starting');
-        setRenderer(mode);
+        // 'idle' fires once the frame has settled, which is when the cluster
+        // features are actually queryable.
+        target.on('idle', syncLabels);
+        target.on('move', syncLabels);
 
-        const created = new maplibregl.Map({
-          container: container.current!,
-          style: mode === 'vector' ? VECTOR_STYLE : RASTER_STYLE,
-          center: [-86.15, 39.0],
-          zoom: 4,
-          attributionControl: { compact: true },
-        });
-        map = created;
-
-        created.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-
-        // Report anything the library knows. The first version of this filtered
-        // errors by message and swallowed the one that actually happened.
-        created.on('error', (e) => {
-          if (cancelled) return;
-          const raw = (e as { error?: { message?: string } })?.error?.message ?? 'unknown error';
-          // A vector failure is not terminal — the raster retry follows.
-          if (mode === 'vector') return;
-          setStage('failed');
-          setMessage(
-            /webgl|gpu|context/i.test(raw)
-              ? `The graphics context failed: ${raw}. Hardware acceleration may be switched off.`
-              : `The basemap could not be drawn: ${raw}`,
-          );
-        });
-
-        created.on('styledata', () => {
-          if (!cancelled) setStage((s) => (s === 'starting' ? 'style' : s));
-        });
-
-        created.on('load', () => {
-          if (cancelled) return;
-          addOverlay(created, mode);
-          setStage('ready');
-          if (mode === 'vector') setMessage(null);
-        });
-      }
-
-      build('vector');
-
-      // Vector did not get there in time: rebuild on the simpler style rather
-      // than leaving a blank rectangle.
-      timers.push(
-        window.setTimeout(() => {
-          if (cancelled) return;
-          setStage((current) => {
-            if (current === 'ready') return current;
-            setMessage('The detailed basemap did not load, so a simpler one is being used.');
-            build('raster');
-            return 'starting';
-          });
-        }, 8000),
-      );
-
-      // Raster did not get there either: stop pretending and show the list.
-      timers.push(
-        window.setTimeout(() => {
-          if (cancelled) return;
-          setStage((current) => {
-            if (current === 'ready') return current;
-            setMessage(
-              'Neither basemap finished loading. Everything the map needs answered when tested from this machine, so the likeliest cause is a browser extension or proxy blocking cartocdn.com — the network tab will say which request is stalling. The cases are listed below regardless.',
-            );
-            return 'failed';
-          });
-        }, 20000),
-      );
+        setStage('ready');
+        setMessage(null);
+      });
     }
 
     void boot();
 
     return () => {
       cancelled = true;
-      timers.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(timeout);
+      labels.forEach((m) => m.remove());
+      labels.clear();
       map?.remove();
     };
   }, [located, clustered, router]);
@@ -311,9 +318,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-ink-muted" role="status">
           {located.length} of {cases.length} case{cases.length === 1 ? '' : 's'} positioned
-          {stage === 'starting' ? ' · starting map…' : ''}
-          {stage === 'style' ? ' · loading tiles…' : ''}
-          {stage === 'ready' && renderer === 'raster' ? ' · simplified basemap' : ''}
+          {stage === 'starting' ? ' · loading map…' : ''}
         </p>
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-secondary">
           <input
@@ -326,13 +331,11 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
         </label>
       </div>
 
-      {message ? (
+      {stage === 'failed' && message ? (
         <div className="flex items-start gap-2 rounded-lg border border-edge-strong bg-sunken px-3 py-2.5">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">
-              {stage === 'failed' ? 'The map could not be drawn' : 'Falling back to a simpler map'}
-            </p>
+            <p className="text-sm font-medium text-ink">The map could not be drawn</p>
             <p className="mt-0.5 text-sm text-ink-secondary">{message}</p>
           </div>
         </div>
