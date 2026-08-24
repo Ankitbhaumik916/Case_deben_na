@@ -29,7 +29,7 @@ export function TopNav({ user }: { user: CurrentUser }) {
   const items: NavItem[] = [
     { label: 'Portal', href: '/portal', enabled: true },
     { label: 'Cases', href: '/cases', enabled: true },
-    { label: 'Pipeline', href: '/pipeline', enabled: false, note: 'Kanban board — phase 6' },
+    { label: 'Pipeline', href: '/pipeline', enabled: true },
     { label: 'Reports', href: '/reports', enabled: false, note: 'Analytics — phase 12' },
     {
       label: 'Activity',

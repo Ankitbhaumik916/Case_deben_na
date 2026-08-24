@@ -23,7 +23,8 @@
     "verify:builder": "node scripts/verify-builder.mjs",
     "user:role": "tsx scripts/set-role.ts",
     "verify:cases": "node scripts/verify-cases.mjs",
-    "verify:workspace": "node scripts/verify-workspace.mjs"
+    "verify:workspace": "node scripts/verify-workspace.mjs",
+    "verify:pipeline": "node scripts/verify-pipeline.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

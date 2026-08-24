@@ -20,6 +20,7 @@ rendered dynamically.
 | 3 | Admin → Case Type Builder | **done** |
 | 4 | Case list, filters, map, saved views | **done** (per-field filters deferred) |
 | 5 | Case workspace — dynamic fields, autosave | **done** |
+| 6 | Pipeline board + admin notes | **done** |
 | 4–14 | See the build plan | not started |
 
 ---
@@ -159,7 +160,8 @@ One Next project, one deployable output.
 | `/portal` | the app home | required |
 | `/cases` | case list (`?view=list\|map\|stats`) | required |
 | `/cases/new` | case type picker, then create | investigator+ |
-| `/cases/[id]` | case file (read-only until phase 5) | required |
+| `/cases/[id]` | case file — dynamic fields, autosave | required |
+| `/pipeline` | kanban board, admin notes | required |
 | `/admin/case-types` | Case Type Builder | admin+ |
 | `/cases`, `/pipeline`, … | later phases | required |
 
@@ -175,6 +177,7 @@ npm run verify:signup   # registration, roles, duplicates, audit; cleans up afte
 npm run verify:builder  # an admin builds a discipline, an investigator works a case of it
 npm run verify:cases    # list, search, filters, stats, create flow, read-only gating
 npm run verify:workspace # dynamic fields, autosave, completion, audit trail
+npm run verify:pipeline # board columns, moves, transition guard, admin notes
 ```
 
 ## Design
