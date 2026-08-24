@@ -49,9 +49,19 @@ The page degrades on its own, in this order:
 
 | Tier | Renders | When |
 |---|---|---|
-| 1 | the video, looping | both files present |
+| 1 | the video, looping | clip present — **what ships today** |
 | 2 | the poster still | poster present; video missing, blocked, or reduced-motion |
-| 3 | a CSS gradient | neither present — **what ships today** |
+| 3 | a CSS gradient | neither present |
+
+`bg-video.mp4` is self-hosted (13.9 MB, H.264). It was pulled down from the
+CloudFront URL in the original brief rather than hotlinked: a third-party origin
+can move or expire an asset without warning, and the same brief said not to
+depend on someone else's host. Served from `public/`, it gets range requests and
+a year-long immutable cache from the CDN in front of the app.
+
+A poster still would let tier 2 cover the first moment before the video decodes.
+There is no encoder on the build machine to extract one; any frame exported as
+`public/landing/assets/bg-poster.jpg` is picked up with no code change.
 
 Tier 3 needs no binary asset at all: a dark radial wash with a faint dot grid
 echoing the display face. So the page looks finished right now, and looks
