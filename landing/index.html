@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Forensibus — Case Intelligence, Built to Adapt</title>
+    <meta
+      name="description"
+      content="No-code case management that configures to your discipline — fire, burglary, questioned documents — not the other way around."
+    />
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap"
+      rel="stylesheet"
+    />
+    <!--
+      Font Awesome is loaded per spec. Nothing on the page currently uses it —
+      the stat glyphs are DotGothic16 characters and the burger is CSS bars — so
+      this is ~30KB of CSS for no rendered pixel. Safe to delete until an icon
+      actually needs it.
+    -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <!-- ===================== background ===================== -->
+    <div class="bg">
+      <!--
+        Always-present base layer. This is the fallback: it renders whether or
+        not the video asset exists, so the page is never broken while the slot
+        is empty.
+      -->
+      <div class="bg-fallback" aria-hidden="true"></div>
+
+      <!--
+        PLACEHOLDER SLOT. assets/bg-video.mp4 is not in the repo — drop in
+        footage you hold rights to (licensed stock, commissioned, or generated)
+        and it takes over automatically. If it is missing or fails to decode,
+        main.js flags the parent and the gradient above stays visible.
+
+        Add poster="assets/bg-poster.jpg" once you have a real still frame.
+      -->
+      <video
+        class="bg-video"
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        aria-hidden="true"
+        tabindex="-1"
+      >
+        <source src="assets/bg-video.mp4" type="video/mp4" />
+      </video>
+
+      <!-- Keeps white type legible over arbitrary footage. -->
+      <div class="bg-scrim" aria-hidden="true"></div>
+    </div>
+
+    <!-- ===================== page ===================== -->
+    <div class="page">
+      <!-- ---------- header ---------- -->
+      <header class="header">
+        <a class="logo" href="./" aria-label="Forensibus — home">
+          <img src="assets/logo.svg" alt="" width="46" height="46" />
+        </a>
+
+        <nav class="nav" aria-label="Primary">
+          <ul>
+            <li><a href="./" class="is-active" aria-current="page">Home</a></li>
+            <li><a href="#" title="Not built yet">Product</a></li>
+            <li><a href="#" title="Not built yet">Solutions</a></li>
+            <li><a href="#" title="Not built yet">Contact</a></li>
+          </ul>
+        </nav>
+
+        <a class="signin" href="/login">Sign in</a>
+
+        <button
+          class="burger"
+          type="button"
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+          aria-label="Open menu"
+        >
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
+      </header>
+
+      <!-- ---------- hero ---------- -->
+      <main class="hero">
+        <!--
+          Trust row: structure is built and styled but disabled. It stays off
+          until there are real logos or a real figure to put in it — a
+          fabricated enterprise-trust claim is worse than an empty space.
+          Set data-enabled="true" to show it.
+        -->
+        <div class="trust" data-enabled="false" hidden>
+          <span class="trust-avatars">
+            <span class="trust-avatar"></span>
+            <span class="trust-avatar"></span>
+            <span class="trust-avatar"></span>
+          </span>
+          <span class="trust-pill">Replace with a real figure</span>
+        </div>
+
+        <h1 class="headline">
+          <span class="headline-line">One Engine.</span>
+          <span class="headline-line">Every Case Type.</span>
+        </h1>
+
+        <p class="subhead anim" style="--d: 0.28s">
+          No-code case management that configures to your discipline — fire, burglary,
+          questioned documents — not the other way around.
+        </p>
+
+        <!--
+          "Request a Demo" was the suggested label, but there is no demo-request
+          destination yet and a CTA pointing nowhere is worse than one that
+          works. Using the spec's sanctioned alternative until a form exists.
+        -->
+        <a class="cta anim" href="/login" style="--d: 0.4s">Sign In</a>
+      </main>
+
+      <!-- ---------- stats ---------- -->
+      <footer class="stats" aria-label="Key figures">
+        <ul>
+          <li class="stat anim" data-stat="case-types" style="--d: 0.5s">
+            <span class="stat-icon" aria-hidden="true">#</span>
+            <span class="stat-value" data-count-to="" data-suffix="">&mdash;</span>
+            <span class="stat-label">Case Types Configurable</span>
+          </li>
+          <li class="stat anim" data-stat="compliance-coverage" style="--d: 0.58s">
+            <span class="stat-icon" aria-hidden="true">%</span>
+            <span class="stat-value" data-count-to="" data-suffix="%">&mdash;</span>
+            <span class="stat-label">Compliance Coverage</span>
+          </li>
+          <li class="stat anim" data-stat="report-turnaround" style="--d: 0.66s">
+            <span class="stat-icon" aria-hidden="true">&lt;</span>
+            <span class="stat-value" data-count-to="" data-suffix="h">&mdash;</span>
+            <span class="stat-label">Report Turnaround</span>
+          </li>
+          <li class="stat anim" data-stat="evidence-items" style="--d: 0.74s">
+            <span class="stat-icon" aria-hidden="true">*</span>
+            <span class="stat-value" data-count-to="" data-suffix="">&mdash;</span>
+            <span class="stat-label">Evidence Items Tracked</span>
+          </li>
+        </ul>
+        <p class="stats-note">Figures pending — see STATS in main.js</p>
+      </footer>
+    </div>
+
+    <!-- ===================== mobile menu ===================== -->
+    <div class="menu-overlay" hidden></div>
+
+    <nav id="mobile-menu" class="menu-sheet" aria-label="Mobile" hidden>
+      <ul>
+        <li><a href="./" class="is-active" aria-current="page">Home</a></li>
+        <li><a href="#" title="Not built yet">Product</a></li>
+        <li><a href="#" title="Not built yet">Solutions</a></li>
+        <li><a href="#" title="Not built yet">Contact</a></li>
+      </ul>
+      <a class="menu-signin" href="/login">Sign in</a>
+    </nav>
+
+    <script src="main.js"></script>
+  </body>
+</html>
