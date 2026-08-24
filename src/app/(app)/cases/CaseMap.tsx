@@ -61,6 +61,20 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
     [cases],
   );
 
+  // A dot's colour is its status, and nothing on screen said so. The key lists
+  // only the statuses actually present, so it stays short and never invents
+  // entries for statuses this result does not contain.
+  const legend = React.useMemo(() => {
+    const seen = new Map<string, { label: string; color: string; count: number }>();
+    for (const c of located) {
+      const label = c.status_label ?? 'No status';
+      const existing = seen.get(label);
+      if (existing) existing.count += 1;
+      else seen.set(label, { label, color: c.status_color ?? '#64748b', count: 1 });
+    }
+    return [...seen.values()].sort((a, b) => b.count - a.count);
+  }, [located]);
+
   React.useEffect(() => {
     if (located.length === 0) return;
 
@@ -301,14 +315,29 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
     };
   }, [located, clustered, router]);
 
+  const missing = cases.filter((c) => c.lat === null || c.lng === null);
+
   if (located.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-edge-strong bg-sunken px-6 py-10 text-center">
         <p className="text-base font-medium text-ink">Nothing to place on a map</p>
         <p className="mx-auto mt-1 max-w-prose text-sm text-ink-secondary">
           None of the {cases.length} case{cases.length === 1 ? '' : 's'} in this result carries
-          coordinates. Add a latitude and longitude to a case and it appears here.
+          coordinates, so there is nothing to draw. Open one and use “Position on the map” — it
+          can look the coordinates up from the address.
         </p>
+        <ul className="mx-auto mt-3 flex max-w-md flex-wrap justify-center gap-1.5">
+          {cases.slice(0, 8).map((c) => (
+            <li key={c.id}>
+              <a
+                href={`/cases/${c.id}`}
+                className="tabular inline-block rounded-full border border-edge bg-raised px-2 py-0.5 font-mono text-xs text-ink hover:text-accent"
+              >
+                {c.case_number}
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
@@ -330,6 +359,42 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
           Group nearby cases
         </label>
       </div>
+
+      {legend.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-edge bg-raised px-3 py-2">
+          <span className="text-2xs font-medium uppercase tracking-wide text-ink-muted">
+            Dot colour = status
+          </span>
+          {legend.map((entry) => (
+            <span key={entry.label} className="flex items-center gap-1.5 text-xs text-ink-secondary">
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 shrink-0 rounded-full border border-white"
+                style={{ backgroundColor: entry.color }}
+              />
+              {entry.label}
+              <span className="tabular font-mono text-2xs text-ink-muted">{entry.count}</span>
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5 text-xs text-ink-secondary">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-chrome"
+            />
+            grouped cases
+          </span>
+        </div>
+      ) : null}
+
+      {missing.length > 0 ? (
+        <p className="rounded-lg border border-edge bg-sunken px-3 py-2 text-xs text-ink-secondary">
+          {missing.length} case{missing.length === 1 ? '' : 's'} in this result{' '}
+          {missing.length === 1 ? 'has' : 'have'} no coordinates and cannot be placed:{' '}
+          {missing.slice(0, 4).map((c) => c.case_number).join(', ')}
+          {missing.length > 4 ? `, and ${missing.length - 4} more` : ''}. Open a case and use
+          “Position on the map” to give it one.
+        </p>
+      ) : null}
 
       {stage === 'failed' && message ? (
         <div className="flex items-start gap-2 rounded-lg border border-edge-strong bg-sunken px-3 py-2.5">

@@ -25,6 +25,8 @@ const NewCase = z.object({
   county: z.string().trim().max(80).optional().or(z.literal('')),
   state: z.string().trim().max(40).optional().or(z.literal('')),
   incidentDate: z.string().trim().optional().or(z.literal('')),
+  lat: z.number().min(-90).max(90).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export async function createCase(input: {
@@ -37,6 +39,8 @@ export async function createCase(input: {
   county?: string;
   state?: string;
   incidentDate?: string;
+  lat?: number | null;
+  lng?: number | null;
   leadInvestigatorId?: string;
 }): Promise<ActionResult<{ id: string }>> {
   const parsed = NewCase.safeParse(input);
@@ -59,6 +63,8 @@ export async function createCase(input: {
       county: parsed.data.county || null,
       state: parsed.data.state || null,
       incident_date: parsed.data.incidentDate || null,
+      lat: parsed.data.lat ?? null,
+      lng: parsed.data.lng ?? null,
       lead_investigator_id: input.leadInvestigatorId || user?.id || null,
       created_by: user?.id ?? null,
       // status_id is left out on purpose: apply_default_case_status picks the

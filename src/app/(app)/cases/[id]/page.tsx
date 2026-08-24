@@ -8,6 +8,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { Icon } from '@/components/ui/icon';
 import type { FieldDef, PersonOption } from '@/components/fields/DynamicField';
 import { CaseWorkspace, type SectionDef } from './CaseWorkspace';
+import { LocationCard } from './LocationCard';
 
 export const metadata = { title: 'Case' };
 
@@ -24,7 +25,7 @@ export default async function CasePage({ params }: { params: { id: string } }) {
   const { data: kase } = await supabase
     .from('case_list_view')
     .select(
-      'id, case_number, title, address, city, county, state, created_at, incident_date, days_open, case_type_id, case_type_name, case_type_color, case_type_icon, status_label, status_color, lead_investigator_name, created_by_name',
+      'id, case_number, title, address, city, county, state, lat, lng, created_at, incident_date, days_open, case_type_id, case_type_name, case_type_color, case_type_icon, status_label, status_color, lead_investigator_name, created_by_name',
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -155,6 +156,14 @@ export default async function CasePage({ params }: { params: { id: string } }) {
           ) : null}
         </dl>
       </header>
+
+      <LocationCard
+        caseId={params.id}
+        address={[kase.address, kase.city, kase.county, kase.state].filter(Boolean).join(', ')}
+        lat={kase.lat as number | null}
+        lng={kase.lng as number | null}
+        canWrite={can.write(org.rank)}
+      />
 
       <CaseWorkspace
         caseId={params.id}
