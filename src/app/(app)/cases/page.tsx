@@ -21,6 +21,31 @@ const VIEWS = [
 
 const FILTER_KEYS = ['q', 'type', 'status', 'county', 'from', 'to'] as const;
 
+/** The filtered case query, split out so it can run alongside everything else. */
+function buildCaseQuery(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  filters: Record<string, string>,
+) {
+  let query = supabase
+    .from('case_list_view')
+    .select(CASE_SELECT)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (filters.q) {
+    // Matches case number, address, every person on the case and every dynamic
+    // field value — cases.search_tsv is kept current by the triggers in 0010.
+    query = query.textSearch('search_tsv', filters.q, { type: 'websearch', config: 'english' });
+  }
+  if (filters.type) query = query.eq('case_type_slug', filters.type);
+  if (filters.status) query = query.eq('status_key', filters.status);
+  if (filters.county) query = query.eq('county', filters.county);
+  if (filters.from) query = query.gte('created_at', filters.from);
+  if (filters.to) query = query.lte('created_at', `${filters.to}T23:59:59`);
+
+  return query;
+}
+
 export default async function CasesPage({
   searchParams,
 }: {
@@ -52,8 +77,20 @@ export default async function CasesPage({
 
   const supabase = createSupabaseServerClient();
 
-  const [{ data: types }, { data: statuses }, { data: counties }, { data: savedViews }] =
-    await Promise.all([
+  /*
+   * One round trip, not two.
+   *
+   * The case query does not depend on the filter options, so waiting for them
+   * first only bought an extra Singapore-to-wherever-this-runs round trip. At
+   * ~250ms each that was a quarter second of nothing happening.
+   */
+  const [
+    { data: types },
+    { data: statuses },
+    { data: counties },
+    { data: savedViews },
+    { data: rows, error },
+  ] = await Promise.all([
       supabase
         .from('case_types')
         .select('id, name, slug, color, icon')
@@ -72,26 +109,9 @@ export default async function CasesPage({
         .select('id, name, filters, columns, view_mode, is_shared, is_locked, user_id')
         .eq('org_id', org.orgId)
         .order('name'),
+      buildCaseQuery(supabase, filters).returns<CaseRow[]>(),
     ]);
 
-  let query = supabase
-    .from('case_list_view')
-    .select(CASE_SELECT)
-    .order('created_at', { ascending: false })
-    .limit(200);
-
-  if (filters.q) {
-    // Matches case number, address, every person on the case and every dynamic
-    // field value — cases.search_tsv is kept current by the triggers in 0010.
-    query = query.textSearch('search_tsv', filters.q, { type: 'websearch', config: 'english' });
-  }
-  if (filters.type) query = query.eq('case_type_slug', filters.type);
-  if (filters.status) query = query.eq('status_key', filters.status);
-  if (filters.county) query = query.eq('county', filters.county);
-  if (filters.from) query = query.gte('created_at', filters.from);
-  if (filters.to) query = query.lte('created_at', `${filters.to}T23:59:59`);
-
-  const { data: rows, error } = await query.returns<CaseRow[]>();
   const cases = rows ?? [];
 
   const countyOptions = [

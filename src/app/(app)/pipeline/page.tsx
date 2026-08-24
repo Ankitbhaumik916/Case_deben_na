@@ -9,6 +9,32 @@ import { Board, type Column } from './Board';
 
 export const metadata = { title: 'Pipeline' };
 
+/** Split out so it can run alongside the status and type lookups. */
+function buildPipelineQuery(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  searchParams: Record<string, string | undefined>,
+) {
+  let query = supabase
+    .from('case_list_view')
+    .select(CASE_SELECT)
+    .is('archived_at', null)
+    .order('created_at', { ascending: false })
+    .limit(300);
+
+  if (searchParams.type) query = query.eq('case_type_slug', searchParams.type);
+  if (searchParams.county) query = query.eq('county', searchParams.county);
+  if (searchParams.from) query = query.gte('created_at', searchParams.from);
+  if (searchParams.to) query = query.lte('created_at', `${searchParams.to}T23:59:59`);
+  if (searchParams.q) {
+    query = query.textSearch('search_tsv', searchParams.q, {
+      type: 'websearch',
+      config: 'english',
+    });
+  }
+
+  return query;
+}
+
 export default async function PipelinePage({
   searchParams,
 }: {
@@ -29,7 +55,9 @@ export default async function PipelinePage({
 
   const supabase = createSupabaseServerClient();
 
-  const [{ data: types }, { data: allStatuses }] = await Promise.all([
+  // The case query does not depend on the status list, so it runs alongside it
+  // rather than after — one fewer round trip to the database's region.
+  const [{ data: types }, { data: allStatuses }, { data: rows, error }] = await Promise.all([
     supabase
       .from('case_types')
       .select('id, name, slug')
@@ -42,6 +70,7 @@ export default async function PipelinePage({
       .eq('org_id', org.orgId)
       .eq('is_active', true)
       .order('sort_order'),
+    buildPipelineQuery(supabase, searchParams).returns<CaseRow[]>(),
   ]);
 
   const selectedType = (types ?? []).find((t) => t.slug === searchParams.type);
@@ -69,25 +98,6 @@ export default async function PipelinePage({
     requiresReview: Boolean(s.requires_review_role),
   }));
 
-  let query = supabase
-    .from('case_list_view')
-    .select(CASE_SELECT)
-    .is('archived_at', null)
-    .order('created_at', { ascending: false })
-    .limit(300);
-
-  if (searchParams.type) query = query.eq('case_type_slug', searchParams.type);
-  if (searchParams.county) query = query.eq('county', searchParams.county);
-  if (searchParams.from) query = query.gte('created_at', searchParams.from);
-  if (searchParams.to) query = query.lte('created_at', `${searchParams.to}T23:59:59`);
-  if (searchParams.q) {
-    query = query.textSearch('search_tsv', searchParams.q, {
-      type: 'websearch',
-      config: 'english',
-    });
-  }
-
-  const { data: rows, error } = await query.returns<CaseRow[]>();
   const cases = rows ?? [];
 
   const linkFor = (patch: Record<string, string | undefined>) => {
