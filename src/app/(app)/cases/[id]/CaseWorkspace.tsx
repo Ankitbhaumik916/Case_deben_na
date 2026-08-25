@@ -237,6 +237,7 @@ export function CaseWorkspace({
                       field={field}
                       value={values[field.id]}
                       people={people}
+                      libraryHref={`/cases/${caseId}?tab=library`}
                       disabled={!canWrite}
                       onChange={(v) => setValues((prev) => ({ ...prev, [field.id]: v }))}
                       onCommit={(v) => {

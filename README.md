@@ -22,7 +22,8 @@ rendered dynamically.
 | 5 | Case workspace — dynamic fields, autosave | **done** |
 | 6 | Pipeline board + admin notes | **done** |
 | 7 | Evidence + chain of custody | **done** |
-| 4–14 | See the build plan | not started |
+| 8 | Case library — upload, gallery, tags, media logs | **done** |
+| 9–14 | See the build plan | not started |
 
 ---
 
@@ -141,6 +142,12 @@ retention_schedules  per org / per case type
 - **The audit trail is written by triggers**, not by the client, and has a
   `SELECT` policy only — no client role can edit or erase it. Application events
   with no row behind them (exports, sign-ins) go through `public.log_activity()`.
+- **Files are secured by their path.** Every case bucket uses
+  `{org_id}/{case_id}/{file}`, and the storage policies read the first segment,
+  so one predicate secures the whole bucket. Uploads go straight from the
+  browser to storage with the user's own session — nothing large passes through
+  a serverless function — which means the storage policy, not application code,
+  is what stops a write into another organisation's prefix.
 - **A whole discipline is one JSON document.**
   `install_case_type_template(org_id, spec)` /
   `export_case_type_template(case_type_id)` / `duplicate_case_type(...)` are what
@@ -161,7 +168,9 @@ One Next project, one deployable output.
 | `/portal` | the app home | required |
 | `/cases` | case list (`?view=list\|map\|stats`) | required |
 | `/cases/new` | case type picker, then create | investigator+ |
-| `/cases/[id]` | case file — dynamic fields, autosave | required |
+| `/cases/[id]` | case file — dynamic fields, autosave (`?tab=file\|library\|custody`) | required |
+| `/cases/[id]/custody` | printable chain-of-custody document | required |
+| `/cases/[id]/media-log/[logId]` | printable media log | required |
 | `/pipeline` | kanban board, admin notes | required |
 | `/admin/case-types` | Case Type Builder | admin+ |
 | `/cases`, `/pipeline`, … | later phases | required |
@@ -180,7 +189,18 @@ npm run verify:cases    # list, search, filters, stats, create flow, read-only g
 npm run verify:workspace # dynamic fields, autosave, completion, audit trail
 npm run verify:pipeline # board columns, moves, transition guard, admin notes
 npm run verify:evidence # custody ledger, derived status, printable document
+npm run verify:media    # storage boundary, upload, gallery, tags, media logs
 ```
+
+Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at
+a local server or a deployment. The first two lines of every run print which
+target and which project were actually used — added after a suite quietly
+tested localhost while reporting on a deployment.
+
+They also assume nothing about how much data exists: counts are captured at the
+start of a run and compared against at the end. Two suites originally asserted
+seeded literals (5 cases, 7 sections) and began failing the moment the product
+was used for real, which is the wrong thing to notice.
 
 ## Design
 

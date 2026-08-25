@@ -13,9 +13,16 @@ import { readFileSync } from 'node:fs';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 
-const BASE = process.env.VERIFY_BASE_URL || 'http://127.0.0.1:3100';
+function arg(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > -1 ? process.argv[i + 1] : undefined;
+}
+
+const BASE = arg('base') || process.env.VERIFY_BASE_URL || 'http://127.0.0.1:3100';
+const ENV_FILE = arg('env') || '.env.local';
+
 const env = {};
-for (const l of readFileSync('.env.local', 'utf8').split(/\r?\n/)) {
+for (const l of readFileSync(ENV_FILE, 'utf8').split(/\r?\n/)) {
   const m = l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
   if (m) env[m[1]] = m[2].trim();
 }
@@ -53,9 +60,32 @@ const svc = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE
   auth: { persistSession: false },
 });
 
+console.log(`
+TARGET  ${BASE}`);
+console.log(`AUTH    ${env.NEXT_PUBLIC_SUPABASE_URL}  (${ENV_FILE})`);
+
 const admin = await sb('ada.lindqvist@northgate.test');
 const inv = await sb('ines.vargas@northgate.test');
 const { data: org } = await svc.from('organizations').select('id').eq('slug', 'northgate').single();
+
+/*
+ * Fire Investigation's section count before this run touches anything.
+ *
+ * This asserted a literal 7 — the seeded number — which made the suite fail
+ * the first time somebody used the Case Type Builder on the seeded type, i.e.
+ * the first time the product did its job. What is actually being checked is
+ * that building a NEW discipline leaves the existing one alone, so the number
+ * to compare against is the one from a moment ago, not from the seed file.
+ */
+const { data: fireType } = await svc
+  .from('case_types')
+  .select('id')
+  .eq('slug', 'fire-investigation')
+  .single();
+const { count: fireSectionsBefore } = await svc
+  .from('case_type_sections')
+  .select('id', { count: 'exact', head: true })
+  .eq('case_type_id', fireType.id);
 
 let typeId = null;
 let caseId = null;
@@ -185,7 +215,11 @@ try {
   console.log('\nAND THE SEEDED TYPE IS UNTOUCHED');
   const { data: fire } = await inv.from('case_types').select('id').eq('slug', 'fire-investigation').single();
   const { count: fireSections } = await inv.from('case_type_sections').select('id', { count: 'exact', head: true }).eq('case_type_id', fire.id);
-  check(fireSections === 7, 'fire investigation still has its 7 sections', String(fireSections));
+  check(
+    fireSections === fireSectionsBefore,
+    'fire investigation still has every section it started with',
+    `${fireSections} of ${fireSectionsBefore}`,
+  );
 } finally {
   console.log('\nCLEANUP');
   if (caseId) await svc.from('cases').delete().eq('id', caseId);

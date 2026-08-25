@@ -41,6 +41,7 @@ export function DynamicField({
   value,
   people,
   disabled,
+  libraryHref,
   onChange,
   onCommit,
 }: {
@@ -48,6 +49,8 @@ export function DynamicField({
   value: unknown;
   people: PersonOption[];
   disabled?: boolean;
+  /** Where files for this case actually live, when there is a case. */
+  libraryHref?: string;
   /** Local edit — cheap, every keystroke. */
   onChange: (value: unknown) => void;
   /** Persist — on blur, or immediately for controls with no meaningful blur. */
@@ -224,21 +227,45 @@ export function DynamicField({
           </p>
         );
 
-      // Storage-backed types. Deliberately inert rather than a broken uploader:
-      // buckets, signed URLs and upload progress are the media library, phase 8.
+      /*
+       * Storage-backed types.
+       *
+       * Files belong to the case, not to one field: the same scene photograph
+       * gets referenced from several places and printed in a media log, and a
+       * per-field uploader would scatter copies. So these point at the library
+       * instead of holding their own upload control. media_files carries
+       * section_id and field_id for the day a field wants to claim a subset.
+       *
+       * Signature capture is genuinely absent — it needs a drawing surface,
+       * not a file picker — and says so rather than pretending.
+       */
       case 'photo':
       case 'file':
+        return (
+          <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-edge-strong bg-sunken px-3 py-2.5 text-sm text-ink-muted">
+            <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              {field.fieldType === 'photo' ? 'Photographs' : 'Files'} for this case are held in the
+              library.
+              {isFilled(value) ? ' Something is already recorded against this field.' : ''}
+            </span>
+            {libraryHref ? (
+              <a
+                href={libraryHref}
+                className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
+              >
+                Open the library
+              </a>
+            ) : null}
+          </div>
+        );
+
       case 'signature':
         return (
           <div className="flex items-center gap-2 rounded border border-dashed border-edge-strong bg-sunken px-3 py-2.5 text-sm text-ink-muted">
-            {field.fieldType === 'signature' ? (
-              <PenLine className="h-4 w-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
-            )}
+            <PenLine className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              {field.fieldType === 'signature' ? 'Signature capture' : 'Uploads'} arrive with the
-              media library.
+              Signature capture is not built yet.
               {isFilled(value) ? ' Something is already recorded against this field.' : ''}
             </span>
           </div>

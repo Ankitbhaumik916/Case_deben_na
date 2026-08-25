@@ -69,6 +69,16 @@ console.log(`AUTH    ${env.NEXT_PUBLIC_SUPABASE_URL}  (${ENV_FILE})`);
 const inv = await cookieFor('ines.vargas@northgate.test');
 const ro = await cookieFor('rosa.ortiz@northgate.test');
 
+/*
+ * How many cases exist before this suite touches anything.
+ *
+ * This used to assert a literal 5, which was the seed count on the day it was
+ * written and stopped being true the moment anyone opened a real case on the
+ * project it runs against. The property worth checking is that the suite
+ * leaves nothing behind, not that the database matches a number from history.
+ */
+const { count: baseline } = await svc.from('cases').select('id', { count: 'exact', head: true });
+
 // A server left running from an earlier build answers happily and fails these
 // checks for reasons that have nothing to do with the code under test. That has
 // already cost one confusing run, so name it before asserting anything else.
@@ -205,7 +215,7 @@ console.log('\nCLEANUP');
 await svc.from('saved_views').delete().like('name', 'Probe %');
 await svc.from('cases').delete().eq('case_number', 'RO-SNEAK');
 const { count } = await svc.from('cases').select('id', { count: 'exact', head: true });
-check(count === 5, 'back to the 5 seeded cases', String(count));
+check(count === baseline, 'back to the case count this run started with', `${count} of ${baseline}`);
 
 console.log('\n' + (fail === 0 ? 'CASES: all checks passed' : `CASES: ${fail} FAILED`));
 process.exit(fail ? 1 : 0);

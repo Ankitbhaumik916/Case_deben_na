@@ -10,13 +10,17 @@ import type { FieldDef, PersonOption } from '@/components/fields/DynamicField';
 import { CaseWorkspace, type SectionDef } from './CaseWorkspace';
 import { LocationCard } from './LocationCard';
 import { EvidencePanel, type EvidenceItem } from './EvidencePanel';
+import { LibraryPanel, type MediaFile, type MediaLog } from './LibraryPanel';
 
 export const metadata = { title: 'Case' };
 
 const TABS = [
   ['file', 'Case file'],
+  ['library', 'Library'],
   ['custody', 'Chain of custody'],
 ] as const;
+
+type TabKey = (typeof TABS)[number][0];
 
 export default async function CasePage({
   params,
@@ -52,6 +56,8 @@ export default async function CasePage({
     { data: manual },
     { data: evidence },
     { data: custody },
+    { data: media },
+    { data: mediaLogs },
   ] = await Promise.all([
       supabase
         .from('case_type_sections')
@@ -85,6 +91,18 @@ export default async function CasePage({
         .from('custody_events')
         .select('id, evidence_id, event_type, actor_name, location, occurred_at, notes')
         .order('occurred_at'),
+      supabase
+        .from('media_files')
+        .select(
+          'id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, users ( full_name, email )',
+        )
+        .eq('case_id', params.id)
+        .order('uploaded_at', { ascending: false }),
+      supabase
+        .from('media_log_reports')
+        .select('id, title, media_ids, generated_at, users ( full_name, email )')
+        .eq('case_id', params.id)
+        .order('generated_at', { ascending: false }),
     ]);
 
   const fieldsBySection = new Map<string, FieldDef[]>();
@@ -164,7 +182,54 @@ export default async function CasePage({
     events: eventsByItem.get(e.id as string) ?? [],
   }));
 
-  const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as 'file' | 'custody';
+  const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as TabKey;
+
+  /*
+   * The bucket is private, so every file needs a signed URL to be shown or
+   * downloaded. Signing is a round trip to storage, and it is only worth making
+   * when the library is the tab actually being looked at — the case file and
+   * the custody ledger never touch these URLs.
+   */
+  const signedUrls = new Map<string, string>();
+  if (tab === 'library' && (media ?? []).length > 0) {
+    const { data: signed } = await supabase.storage
+      .from('case-media')
+      .createSignedUrls(
+        (media ?? []).map((m) => m.storage_path as string),
+        3600,
+      );
+    for (const s of signed ?? []) {
+      if (s.signedUrl && s.path) signedUrls.set(s.path, s.signedUrl);
+    }
+  }
+
+  const mediaFiles: MediaFile[] = (media ?? []).map((m) => {
+    const uploader = m.users as unknown as { full_name: string | null; email: string } | null;
+    return {
+      id: m.id as string,
+      fileName: m.file_name as string,
+      mimeType: (m.mime_type as string | null) ?? null,
+      sizeBytes: (m.size_bytes as number | null) ?? null,
+      caption: (m.caption as string | null) ?? null,
+      tags: ((m.tags as string[] | null) ?? []).map(String),
+      capturedAt: (m.captured_at as string | null) ?? null,
+      uploadedAt: m.uploaded_at as string,
+      uploadedByName: uploader?.full_name ?? uploader?.email ?? null,
+      storagePath: m.storage_path as string,
+      url: signedUrls.get(m.storage_path as string) ?? null,
+    };
+  });
+
+  const logDocs: MediaLog[] = (mediaLogs ?? []).map((l) => {
+    const author = l.users as unknown as { full_name: string | null; email: string } | null;
+    return {
+      id: l.id as string,
+      title: l.title as string,
+      mediaIds: ((l.media_ids as string[] | null) ?? []).map(String),
+      generatedAt: l.generated_at as string,
+      generatedByName: author?.full_name ?? author?.email ?? null,
+    };
+  });
 
   const personOptions: PersonOption[] = (people ?? []).map((p) => ({
     id: p.id as string,
@@ -235,6 +300,11 @@ export default async function CasePage({
                 {evidenceItems.length}
               </span>
             ) : null}
+            {key === 'library' && mediaFiles.length > 0 ? (
+              <span className="tabular ml-1.5 font-mono text-2xs text-ink-muted">
+                {mediaFiles.length}
+              </span>
+            ) : null}
           </Link>
         ))}
       </nav>
@@ -257,6 +327,14 @@ export default async function CasePage({
             canWrite={can.write(org.rank)}
           />
         </>
+      ) : tab === 'library' ? (
+        <LibraryPanel
+          caseId={params.id}
+          caseNumber={kase.case_number as string}
+          files={mediaFiles}
+          logs={logDocs}
+          canWrite={can.write(org.rank)}
+        />
       ) : (
         <EvidencePanel
           caseId={params.id}
