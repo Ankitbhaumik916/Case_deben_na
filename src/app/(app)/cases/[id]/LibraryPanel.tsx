@@ -23,9 +23,11 @@ import {
   deleteMediaLog,
   prepareUpload,
   registerMedia,
+  saveAnnotations,
 } from '@/lib/actions/media';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadToStorage } from '@/lib/upload';
+import { ImageMarkup, MarkupOverlay, type Shape } from '@/components/media/ImageMarkup';
 import { Button, EmptyState } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +57,7 @@ export interface MediaFile {
   uploadedByName: string | null;
   storagePath: string;
   url: string | null;
+  annotations: Shape[];
 }
 
 export interface MediaLog {
@@ -562,17 +565,20 @@ function Gallery({
             onClick={() => onOpen(f.id)}
             className="block w-full cursor-pointer overflow-hidden rounded-lg border border-edge bg-raised text-left transition-shadow duration-150 hover:shadow"
           >
-            <div className="flex aspect-[4/3] items-center justify-center bg-sunken">
+            <div className="relative flex aspect-[4/3] items-center justify-center bg-sunken">
               {kindOf(f.mimeType) === 'image' && f.url ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signed
                 // storage URLs are short-lived and host-specific; the loader
                 // would have to be told about a host that changes per project.
-                <img
-                  src={f.url}
-                  alt={f.caption ?? f.fileName}
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
+                <>
+                  <img
+                    src={f.url}
+                    alt={f.caption ?? f.fileName}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                  <MarkupOverlay shapes={f.annotations} />
+                </>
               ) : (
                 <KindIcon mime={f.mimeType} className="h-8 w-8 text-ink-muted" />
               )}
@@ -816,6 +822,30 @@ function Detail({
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirming, setConfirming] = React.useState(false);
+  const [marks, setMarks] = React.useState<Shape[]>(file.annotations);
+  const [markState, setMarkState] = React.useState<'idle' | 'saving' | 'saved'>('idle');
+
+  React.useEffect(() => {
+    setMarks(file.annotations);
+  }, [file.annotations]);
+
+  // Each mark is a finished gesture rather than a keystroke, so it is saved as
+  // it is made. Nothing here touches the file — only the shapes beside it.
+  async function persistMarks(next: Shape[]) {
+    setMarks(next);
+    setMarkState('saving');
+    setError(null);
+    const result = await saveAnnotations({ id: file.id, caseId, annotations: next });
+    if (!result.ok) {
+      setMarks(file.annotations);
+      setMarkState('idle');
+      setError(result.error);
+      return;
+    }
+    setMarkState('saved');
+    window.setTimeout(() => setMarkState('idle'), 2000);
+    router.refresh();
+  }
 
   async function save() {
     setBusy(true);
@@ -863,10 +893,22 @@ function Detail({
       </div>
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="flex max-h-96 items-center justify-center overflow-hidden rounded border border-edge bg-sunken">
+        <div
+          className={cn(
+            'flex items-center justify-center overflow-hidden rounded bg-sunken',
+            kindOf(file.mimeType) === 'image' ? 'border-0' : 'max-h-96 border border-edge',
+          )}
+        >
           {file.url && kindOf(file.mimeType) === 'image' ? (
-            // eslint-disable-next-line @next/next/no-img-element -- see Gallery
-            <img src={file.url} alt={file.caption ?? file.fileName} className="max-h-96 w-auto" />
+            <div className="w-full">
+              <ImageMarkup
+                src={file.url}
+                alt={file.caption ?? file.fileName}
+                shapes={marks}
+                canEdit={canWrite}
+                onChange={(next) => void persistMarks(next)}
+              />
+            </div>
           ) : file.url && kindOf(file.mimeType) === 'video' ? (
             <video src={file.url} controls className="max-h-96 w-full" />
           ) : file.url && kindOf(file.mimeType) === 'audio' ? (
@@ -925,6 +967,11 @@ function Detail({
             {saved ? (
               <span role="status" className="text-xs text-[color:var(--success)]">
                 Saved
+              </span>
+            ) : null}
+            {markState !== 'idle' ? (
+              <span role="status" className="text-xs text-ink-muted">
+                {markState === 'saving' ? 'Saving mark-up…' : 'Mark-up saved'}
               </span>
             ) : null}
 

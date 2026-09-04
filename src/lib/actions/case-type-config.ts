@@ -366,6 +366,22 @@ export async function updateReportSection(
 
 export async function deleteReportSection(id: string, caseTypeId: string): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
+
+  // case_report_section_drafts cascades from this row, so deleting a section
+  // somebody has already written against destroys their text without saying so.
+  // Every other delete in the template refuses on the same grounds; this one
+  // was the exception.
+  const { count } = await supabase
+    .from('case_report_section_drafts')
+    .select('id', { count: 'exact', head: true })
+    .eq('report_section_id', id);
+
+  if ((count ?? 0) > 0) {
+    return fail(
+      `${count} case${count === 1 ? ' has' : 's have'} written against this section. Deleting it would delete what they wrote — take it out of the template only once those cases are closed out.`,
+    );
+  }
+
   const { data, error } = await supabase
     .from('case_type_report_sections')
     .delete()

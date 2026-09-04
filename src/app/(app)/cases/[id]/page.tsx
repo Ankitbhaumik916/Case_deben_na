@@ -102,7 +102,7 @@ export default async function CasePage({
       supabase
         .from('media_files')
         .select(
-          'id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, section_id, field_id, users ( full_name, email )',
+          'id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, section_id, field_id, annotations, users ( full_name, email )',
         )
         .eq('case_id', params.id)
         .order('uploaded_at', { ascending: false }),
@@ -325,6 +325,7 @@ export default async function CasePage({
       uploadedByName: uploader?.full_name ?? uploader?.email ?? null,
       storagePath: m.storage_path as string,
       url: signedUrls.get(m.storage_path as string) ?? null,
+      annotations: ((m.annotations as unknown[] | null) ?? []) as MediaFile['annotations'],
     };
   });
 

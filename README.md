@@ -24,6 +24,7 @@ rendered dynamically.
 | 7 | Evidence + chain of custody | **done** |
 | 8 | Case library — upload, gallery, tags, media logs | **done** |
 | — | Compliance checklist for investigators; editable case details | **done** |
+| — | Rich text in long-form fields; photo mark-up | **done** |
 | 9–14 | See the build plan | not started |
 
 ---
@@ -143,6 +144,20 @@ retention_schedules  per org / per case type
 - **The audit trail is written by triggers**, not by the client, and has a
   `SELECT` policy only — no client role can edit or erase it. Application events
   with no row behind them (exports, sign-ins) go through `public.log_activity()`.
+- **An exhibit is never edited.** Mark-up on a photograph — arrows, boxes,
+  labels — is stored as shapes beside the file in image-relative coordinates,
+  and drawn as an SVG layer wherever the photograph appears, including in print.
+  The uploaded bytes stay exactly as uploaded, so the mark-up can be corrected,
+  removed, or turned off to see the original. Flattening it into the image would
+  replace an exhibit with an edited copy of itself.
+- **Stored markup is sanitised on the way out, not on the way in.** Long-form
+  fields hold a small HTML subset. What is already in the database was put there
+  by an older build or a direct API call, and neither is a promise — so the
+  editor and its read-only view rebuild the document node by node from the
+  allowlist in `src/lib/rich-text.ts`. Nothing anywhere hands a stored value to
+  `dangerouslySetInnerHTML`, and `strip_markup()` keeps tag names out of the
+  search index so a bolded word does not make the case match a search for
+  "strong".
 - **Files are secured by their path.** Every case bucket uses
   `{org_id}/{case_id}/{file}`, and the storage policies read the first segment,
   so one predicate secures the whole bucket. Uploads go straight from the
@@ -192,6 +207,7 @@ npm run verify:pipeline # board columns, moves, transition guard, admin notes
 npm run verify:evidence # custody ledger, derived status, printable document
 npm run verify:media    # storage boundary, upload, gallery, tags, media logs
 npm run verify:fixes    # the five pre-phase-9 corrections
+npm run verify:edits    # template delete guards, rich text, photo mark-up
 ```
 
 Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at

@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth';
 import { EmptyState } from '@/components/ui';
 import { PrintButton } from '../../custody/PrintButton';
+import { MarkupOverlay, type Shape } from '@/components/media/ImageMarkup';
 
 export const metadata = { title: 'Media log' };
 
@@ -51,7 +52,7 @@ export default async function MediaLogPage({
     ids.length
       ? supabase
           .from('media_files')
-          .select('id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket')
+          .select('id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, annotations')
           .in('id', ids)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     log.generated_by
@@ -152,7 +153,7 @@ export default async function MediaLogPage({
                 </div>
 
                 {url ? (
-                  <div className="mt-2 overflow-hidden rounded border border-edge bg-sunken">
+                  <div className="relative mt-2 overflow-hidden rounded border border-edge bg-sunken">
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed
                         storage URL; the image loader would need a per-project host */}
                     <img
@@ -160,6 +161,9 @@ export default async function MediaLogPage({
                       alt={(f.caption as string) ?? (f.file_name as string)}
                       className="max-h-80 w-full object-contain"
                     />
+                    {/* Mark-up prints with the photograph — an arrow at the seat
+                        of a fire is the point of putting it in the log. */}
+                    <MarkupOverlay shapes={((f.annotations as unknown[]) ?? []) as Shape[]} />
                   </div>
                 ) : null}
 
@@ -182,6 +186,15 @@ export default async function MediaLogPage({
                   />
                   <Row label="Type" value={(f.mime_type as string) ?? '—'} small />
                   <Row label="Tags" value={tags.join(', ') || '—'} small />
+                  <Row
+                    label="Mark-up"
+                    value={
+                      ((f.annotations as unknown[]) ?? []).length === 0
+                        ? 'None'
+                        : `${((f.annotations as unknown[]) ?? []).length} mark(s), drawn over the original`
+                    }
+                    small
+                  />
                 </dl>
               </li>
             );

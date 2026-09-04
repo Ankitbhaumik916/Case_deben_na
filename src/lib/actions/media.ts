@@ -85,6 +85,81 @@ const RegisterInput = z.object({
 });
 
 /** Record an uploaded object. Called after the bytes have landed. */
+/*
+ * Mark-up on a photograph, stored beside the file rather than drawn into it.
+ *
+ * The uploaded image is the exhibit and stays exactly as uploaded; these shapes
+ * are a separate layer that can be corrected or removed. Coordinates are
+ * fractions of the image's own size, so the same mark-up lines up on screen and
+ * in print.
+ */
+const Shape = z.discriminatedUnion('kind', [
+  z.object({
+    id: z.string().max(32),
+    kind: z.literal('rect'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    stroke: z.number().min(0.5).max(20),
+    x: z.number(), y: z.number(), w: z.number(), h: z.number(),
+  }),
+  z.object({
+    id: z.string().max(32),
+    kind: z.literal('ellipse'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    stroke: z.number().min(0.5).max(20),
+    x: z.number(), y: z.number(), w: z.number(), h: z.number(),
+  }),
+  z.object({
+    id: z.string().max(32),
+    kind: z.literal('arrow'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    stroke: z.number().min(0.5).max(20),
+    x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number(),
+  }),
+  z.object({
+    id: z.string().max(32),
+    kind: z.literal('free'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    stroke: z.number().min(0.5).max(20),
+    pts: z.array(z.number()).max(4000),
+  }),
+  z.object({
+    id: z.string().max(32),
+    kind: z.literal('text'),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    x: z.number(), y: z.number(),
+    size: z.number().min(0.005).max(0.5),
+    text: z.string().trim().min(1).max(120),
+  }),
+]);
+
+export async function saveAnnotations(input: {
+  id: string;
+  caseId: string;
+  annotations: unknown[];
+}): Promise<MediaResult> {
+  const parsed = z.array(Shape).max(200).safeParse(input.annotations);
+  if (!parsed.success) return fail('That mark-up could not be saved — it is not a shape we know.');
+
+  const supabase = createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from('media_files')
+    .update({ annotations: parsed.data })
+    .eq('id', input.id)
+    .select('id');
+
+  if (error) {
+    if (error.code === '42501') return fail('Your role does not allow marking up this photograph.');
+    return fail(error.message);
+  }
+  // An UPDATE refused by a USING clause matches nothing and raises no error, so
+  // the absence of a row is the refusal.
+  if (!data?.length) return fail('Not saved — you do not have write access to this case.');
+
+  revalidatePath(`/cases/${input.caseId}`);
+  return done;
+}
+
 export async function registerMedia(input: {
   caseId: string;
   fileName: string;

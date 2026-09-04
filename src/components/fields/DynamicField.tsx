@@ -1,9 +1,11 @@
 'use client';
 
-import { FieldUploader } from './FieldUploader';
 import * as React from 'react';
 import { Paperclip, PenLine } from 'lucide-react';
+import { looksLikeMarkup, richTextIsEmpty } from '@/lib/rich-text';
 import { cn } from '@/lib/utils';
+import { FieldUploader } from './FieldUploader';
+import { RichTextField } from './RichTextField';
 
 /**
  * One component, every field type.
@@ -74,18 +76,21 @@ export function DynamicField({
 
   function control() {
     switch (field.fieldType) {
+      // Long-form fields carry a narrative, so they get the formatting a
+      // narrative needs. Values typed before this existed are plain text and
+      // still load — the editor promotes them, keeping their line breaks.
       case 'textarea':
         return (
-          <textarea
+          <RichTextField
             id={id}
-            rows={4}
-            disabled={disabled}
             value={asText(value)}
             placeholder={field.placeholder ?? undefined}
-            aria-describedby={describedBy}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={(e) => onCommit(e.target.value)}
-            className={cn(base, 'py-2 leading-relaxed')}
+            disabled={disabled}
+            describedBy={describedBy}
+            onCommit={(html) => {
+              onChange(html);
+              onCommit(html);
+            }}
           />
         );
 
@@ -354,7 +359,13 @@ export const STORAGE_FIELD_TYPES = new Set(['photo', 'file', 'signature']);
 
 export function isFilled(value: unknown): boolean {
   if (value === null || value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'string') {
+    // Clearing a rich text field rarely leaves an empty string — browsers keep
+    // a stray <p> or <br> behind. Judged as raw text that reads as filled, and
+    // the section would claim an answer nobody gave.
+    if (looksLikeMarkup(value)) return !richTextIsEmpty(value);
+    return value.trim().length > 0;
+  }
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value as object).length > 0;
   return true;
