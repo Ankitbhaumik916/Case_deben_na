@@ -1,5 +1,6 @@
 'use client';
 
+import { FieldUploader } from './FieldUploader';
 import * as React from 'react';
 import { Paperclip, PenLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,10 @@ export function DynamicField({
   people,
   disabled,
   libraryHref,
+  caseId,
+  sectionId,
+  attached = 0,
+  onAttached,
   onChange,
   onCommit,
 }: {
@@ -51,6 +56,11 @@ export function DynamicField({
   disabled?: boolean;
   /** Where files for this case actually live, when there is a case. */
   libraryHref?: string;
+  caseId?: string;
+  sectionId?: string;
+  /** Library files already pointing at this field. */
+  attached?: number;
+  onAttached?: () => void;
   /** Local edit — cheap, every keystroke. */
   onChange: (value: unknown) => void;
   /** Persist — on blur, or immediately for controls with no meaningful blur. */
@@ -241,23 +251,32 @@ export function DynamicField({
        */
       case 'photo':
       case 'file':
+        // Outside a case — the builder's preview, for instance — there is
+        // nowhere to upload to, so say what the field is instead of offering a
+        // control that cannot work.
+        if (!caseId || !sectionId) {
+          return (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-edge-strong bg-sunken px-3 py-2.5 text-sm text-ink-muted">
+              <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                {field.fieldType === 'photo' ? 'Photographs' : 'Files'} attach to this field on a
+                real case.
+              </span>
+            </div>
+          );
+        }
         return (
-          <div className="flex flex-wrap items-center gap-2 rounded border border-dashed border-edge-strong bg-sunken px-3 py-2.5 text-sm text-ink-muted">
-            <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>
-              {field.fieldType === 'photo' ? 'Photographs' : 'Files'} for this case are held in the
-              library.
-              {isFilled(value) ? ' Something is already recorded against this field.' : ''}
-            </span>
-            {libraryHref ? (
-              <a
-                href={libraryHref}
-                className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
-              >
-                Open the library
-              </a>
-            ) : null}
-          </div>
+          <FieldUploader
+            caseId={caseId}
+            sectionId={sectionId}
+            fieldId={field.id}
+            label={field.label}
+            kind={field.fieldType === 'photo' ? 'photo' : 'file'}
+            attached={attached}
+            disabled={disabled}
+            libraryHref={libraryHref}
+            onAttached={onAttached}
+          />
         );
 
       case 'signature':
@@ -326,6 +345,12 @@ function asText(value: unknown): string {
   if (typeof value === 'string') return value;
   return String(value);
 }
+
+/**
+ * Field types whose answer is a file in the library, not a value in
+ * case_field_values. Completion has to ask a different question for these.
+ */
+export const STORAGE_FIELD_TYPES = new Set(['photo', 'file', 'signature']);
 
 export function isFilled(value: unknown): boolean {
   if (value === null || value === undefined) return false;

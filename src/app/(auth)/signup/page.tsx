@@ -1,3 +1,4 @@
+import { AuthAside } from '../AuthAside';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { SignupForm } from './SignupForm';
@@ -68,25 +69,11 @@ export default function SignupPage() {
         </div>
       </div>
 
-      {/* ---------- ink panel ---------- */}
-      <div className="relative hidden flex-1 bg-chrome lg:block">
-        <div className="flex h-full flex-col justify-between p-12">
-          <div />
-          <div className="max-w-lg">
-            <p className="text-2xl font-semibold leading-snug tracking-tight text-ink-inverse">
-              Access is per organisation.
-            </p>
-            <p className="mt-4 text-base leading-relaxed text-ink-inverse-muted">
-              An account by itself opens nothing. What you can read, edit and approve is
-              decided by the role you hold inside an organisation, and enforced in the
-              database rather than the interface.
-            </p>
-          </div>
-          <p className="font-mono text-2xs uppercase tracking-widest text-ink-inverse-muted">
-            Access controlled · Fully audited
-          </p>
-        </div>
-      </div>
+      <AuthAside headline="Access is per organisation.">
+        An account by itself opens nothing. What you can read, edit and approve is
+        decided by the role you hold inside an organisation, and enforced in the
+        database rather than the interface.
+      </AuthAside>
     </main>
   );
 }

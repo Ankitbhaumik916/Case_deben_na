@@ -25,6 +25,7 @@ import {
   registerMedia,
 } from '@/lib/actions/media';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { uploadToStorage } from '@/lib/upload';
 import { Button, EmptyState } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -194,9 +195,9 @@ export function LibraryPanel({
       }
 
       try {
-        await put({
-          url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${prep.data.bucket}/${prep.data.path}`,
-          token: session.access_token,
+        await uploadToStorage({
+          bucket: prep.data.bucket,
+          path: prep.data.path,
           file,
           onProgress: (percent) => patch(job.key, { percent }),
         });
@@ -497,59 +498,6 @@ export function LibraryPanel({
       ) : null}
     </div>
   );
-}
-
-/**
- * Upload over XHR rather than fetch, because fetch cannot report request
- * progress. FormData with an empty field name is the shape the storage API
- * expects from a browser — the same one supabase-js sends.
- */
-function put({
-  url,
-  token,
-  file,
-  onProgress,
-}: {
-  url: string;
-  token: string;
-  file: File;
-  onProgress: (percent: number) => void;
-}): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const form = new FormData();
-    form.append('cacheControl', '3600');
-    form.append('', file);
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    xhr.setRequestHeader('authorization', `Bearer ${token}`);
-    xhr.setRequestHeader('apikey', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-    xhr.setRequestHeader('x-upsert', 'false');
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      let message = `Upload failed (${xhr.status}).`;
-      try {
-        const body = JSON.parse(xhr.responseText) as { message?: string; error?: string };
-        if (body.message) message = body.message;
-        else if (body.error) message = body.error;
-      } catch {
-        /* the body was not JSON; the status is all there is */
-      }
-      if (xhr.status === 403) {
-        message = 'Storage refused the upload. Read-only accounts cannot add files.';
-      }
-      reject(new Error(message));
-    };
-
-    xhr.onerror = () => reject(new Error('The connection dropped during the upload.'));
-    xhr.onabort = () => reject(new Error('The upload was cancelled.'));
-    xhr.send(form);
-  });
 }
 
 function Chip({

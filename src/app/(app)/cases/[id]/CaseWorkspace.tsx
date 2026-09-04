@@ -3,7 +3,13 @@
 import * as React from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { saveFieldValue, setSectionComplete } from '@/lib/actions/case-values';
-import { DynamicField, isFilled, type FieldDef, type PersonOption } from '@/components/fields/DynamicField';
+import {
+  DynamicField,
+  isFilled,
+  STORAGE_FIELD_TYPES,
+  type FieldDef,
+  type PersonOption,
+} from '@/components/fields/DynamicField';
 import { Icon } from '@/components/ui/icon';
 import { cn } from '@/lib/utils';
 
@@ -37,14 +43,18 @@ export function CaseWorkspace({
   initialValues,
   people,
   canWrite,
+  attachments = {},
 }: {
   caseId: string;
   sections: SectionDef[];
   initialValues: Record<string, unknown>;
   people: PersonOption[];
   canWrite: boolean;
+  /** Library files per field id, for the storage-backed field types. */
+  attachments?: Record<string, number>;
 }) {
   const [values, setValues] = React.useState(initialValues);
+  const [attached, setAttached] = React.useState<Record<string, number>>(attachments);
   const [manual, setManual] = React.useState<Record<string, boolean>>(
     Object.fromEntries(sections.map((s) => [s.id, s.manuallyComplete])),
   );
@@ -64,10 +74,40 @@ export function CaseWorkspace({
   );
   const active = visible.find((s) => s.id === activeSectionId) ?? visible[0];
 
+  /*
+   * Keep the section you are in.
+   *
+   * Every autosave calls revalidatePath, so the server component re-renders and
+   * hands down a freshly built `sections` array. Keying a reset off that array's
+   * identity meant each committed edit threw you back to the first section —
+   * which read as "saving navigates you away". Only move when the section you
+   * were looking at has genuinely gone (deleted, or it belongs to another tab).
+   */
   React.useEffect(() => {
-    const first = sections.find((s) => s.tabKey === tab);
-    setActiveSectionId(first?.id ?? null);
+    setActiveSectionId((current) => {
+      if (current && sections.some((s) => s.id === current && s.tabKey === tab)) return current;
+      return sections.find((s) => s.tabKey === tab)?.id ?? null;
+    });
   }, [tab, sections]);
+
+  React.useEffect(() => {
+    setAttached(attachments);
+  }, [attachments]);
+
+  /*
+   * Is this field answered?
+   *
+   * A photo or file field is answered by a file in the library, never by a row
+   * in case_field_values — so asking isFilled() about it always said no, and a
+   * section containing one could never reach complete however many photographs
+   * the case carried. Both the dot and the n/n count go through here, because
+   * they used to disagree about what counted.
+   */
+  const answered = React.useCallback(
+    (f: FieldDef) =>
+      STORAGE_FIELD_TYPES.has(f.fieldType) ? (attached[f.id] ?? 0) > 0 : isFilled(values[f.id]),
+    [attached, values],
+  );
 
   function completionOf(section: SectionDef): Completion {
     if (section.completionRule === 'manual') {
@@ -76,7 +116,7 @@ export function CaseWorkspace({
     const fields = section.fields;
     if (fields.length === 0) return 'empty';
 
-    const filled = fields.filter((f) => isFilled(values[f.id]));
+    const filled = fields.filter(answered);
     if (filled.length === 0) return 'empty';
 
     switch (section.completionRule) {
@@ -85,7 +125,7 @@ export function CaseWorkspace({
       case 'all_required_fields_filled': {
         const required = fields.filter((f) => f.required);
         if (required.length === 0) return filled.length === fields.length ? 'complete' : 'partial';
-        return required.every((f) => isFilled(values[f.id])) ? 'complete' : 'partial';
+        return required.every(answered) ? 'complete' : 'partial';
       }
       case 'any_field_filled':
       default:
@@ -159,7 +199,7 @@ export function CaseWorkspace({
           <ul className="overflow-hidden rounded-lg border border-edge bg-raised">
             {visible.map((section) => {
               const state = completionOf(section);
-              const filled = section.fields.filter((f) => isFilled(values[f.id])).length;
+              const filled = section.fields.filter(answered).length;
               return (
                 <li key={section.id} className="border-b border-edge last:border-0">
                   <button
@@ -238,6 +278,12 @@ export function CaseWorkspace({
                       value={values[field.id]}
                       people={people}
                       libraryHref={`/cases/${caseId}?tab=library`}
+                      caseId={caseId}
+                      sectionId={active.id}
+                      attached={attached[field.id] ?? 0}
+                      onAttached={() =>
+                        setAttached((a) => ({ ...a, [field.id]: (a[field.id] ?? 0) + 1 }))
+                      }
                       disabled={!canWrite}
                       onChange={(v) => setValues((prev) => ({ ...prev, [field.id]: v }))}
                       onCommit={(v) => {

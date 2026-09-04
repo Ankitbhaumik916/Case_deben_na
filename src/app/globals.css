@@ -261,3 +261,14 @@
     margin: 18mm 14mm;
   }
 }
+
+/* --------------------------------------------------------------------------
+   The sign-in aside plays a short ambient loop. Anyone who has asked their
+   system for less motion gets the still frame that is already painted on the
+   container behind it, rather than nothing.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .auth-aside-video {
+    display: none;
+  }
+}

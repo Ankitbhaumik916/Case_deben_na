@@ -11,6 +11,8 @@ import { CaseWorkspace, type SectionDef } from './CaseWorkspace';
 import { LocationCard } from './LocationCard';
 import { EvidencePanel, type EvidenceItem } from './EvidencePanel';
 import { LibraryPanel, type MediaFile, type MediaLog } from './LibraryPanel';
+import { CaseDetailsCard, type CaseDetails, type OrgMember } from './CaseDetailsCard';
+import { ChecklistPanel, type Checklist, type ChecklistItem } from './ChecklistPanel';
 
 export const metadata = { title: 'Case' };
 
@@ -18,6 +20,7 @@ const TABS = [
   ['file', 'Case file'],
   ['library', 'Library'],
   ['custody', 'Chain of custody'],
+  ['compliance', 'Compliance'],
 ] as const;
 
 type TabKey = (typeof TABS)[number][0];
@@ -58,6 +61,11 @@ export default async function CasePage({
     { data: custody },
     { data: media },
     { data: mediaLogs },
+    { data: raw },
+    { data: members },
+    { data: checklists },
+    { data: checklistItems },
+    { data: responses },
   ] = await Promise.all([
       supabase
         .from('case_type_sections')
@@ -94,7 +102,7 @@ export default async function CasePage({
       supabase
         .from('media_files')
         .select(
-          'id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, users ( full_name, email )',
+          'id, file_name, mime_type, size_bytes, caption, tags, captured_at, uploaded_at, storage_path, bucket, section_id, field_id, users ( full_name, email )',
         )
         .eq('case_id', params.id)
         .order('uploaded_at', { ascending: false }),
@@ -103,6 +111,33 @@ export default async function CasePage({
         .select('id, title, media_ids, generated_at, users ( full_name, email )')
         .eq('case_id', params.id)
         .order('generated_at', { ascending: false }),
+      // The view is shaped for reading; these are the columns the edit form
+      // writes back, and two of them the view does not carry at all.
+      supabase
+        .from('cases')
+        .select('address_line2, postal_code, lead_investigator_id')
+        .eq('id', params.id)
+        .maybeSingle(),
+      supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('org_id', org.orgId)
+        .eq('is_active', true)
+        .order('full_name'),
+      supabase
+        .from('case_type_checklists')
+        .select('id, name, source_standard, version')
+        .eq('case_type_id', kase.case_type_id as string)
+        .eq('is_active', true)
+        .order('name'),
+      supabase
+        .from('checklist_items')
+        .select('id, checklist_id, label, help_text, section_ref, is_required, sort_order')
+        .order('sort_order'),
+      supabase
+        .from('case_checklist_responses')
+        .select('item_id, is_checked, completed_at, users ( full_name, email )')
+        .eq('case_id', params.id),
     ]);
 
   const fieldsBySection = new Map<string, FieldDef[]>();
@@ -181,6 +216,79 @@ export default async function CasePage({
     currentLocation: (e.current_location as string | null) ?? null,
     events: eventsByItem.get(e.id as string) ?? [],
   }));
+
+  const caseDetails: CaseDetails = {
+    caseNumber: (kase.case_number as string) ?? '',
+    title: (kase.title as string | null) ?? '',
+    address: (kase.address as string | null) ?? '',
+    addressLine2: (raw?.address_line2 as string | null) ?? '',
+    city: (kase.city as string | null) ?? '',
+    county: (kase.county as string | null) ?? '',
+    state: (kase.state as string | null) ?? '',
+    postalCode: (raw?.postal_code as string | null) ?? '',
+    incidentDate: ((kase.incident_date as string | null) ?? '').slice(0, 10),
+    leadInvestigatorId: (raw?.lead_investigator_id as string | null) ?? '',
+  };
+
+  const orgMembers: OrgMember[] = (members ?? []).map((m) => ({
+    id: m.id as string,
+    name: (m.full_name as string | null) || (m.email as string),
+  }));
+
+  const responseByItem = new Map(
+    (responses ?? []).map((r) => {
+      const who = r.users as unknown as { full_name: string | null; email: string } | null;
+      return [
+        r.item_id as string,
+        {
+          checked: Boolean(r.is_checked),
+          completedAt: (r.completed_at as string | null) ?? null,
+          completedByName: who?.full_name ?? who?.email ?? null,
+        },
+      ];
+    }),
+  );
+
+  // checklist_items is fetched for the whole org and grouped here rather than
+  // queried per checklist — a handful of rows, one round trip instead of N.
+  const itemsByChecklist = new Map<string, ChecklistItem[]>();
+  for (const i of checklistItems ?? []) {
+    const key = i.checklist_id as string;
+    if (!itemsByChecklist.has(key)) itemsByChecklist.set(key, []);
+    const r = responseByItem.get(i.id as string);
+    itemsByChecklist.get(key)!.push({
+      id: i.id as string,
+      label: i.label as string,
+      helpText: (i.help_text as string | null) ?? null,
+      sectionRef: (i.section_ref as string | null) ?? null,
+      isRequired: Boolean(i.is_required),
+      checked: r?.checked ?? false,
+      completedAt: r?.completedAt ?? null,
+      completedByName: r?.completedByName ?? null,
+    });
+  }
+
+  const caseChecklists: Checklist[] = (checklists ?? []).map((c) => ({
+    id: c.id as string,
+    name: c.name as string,
+    sourceStandard: (c.source_standard as string | null) ?? null,
+    version: (c.version as string | null) ?? null,
+    items: itemsByChecklist.get(c.id as string) ?? [],
+  }));
+
+  const checkTotal = caseChecklists.reduce((n, c) => n + c.items.length, 0);
+  const checkDone = caseChecklists.reduce(
+    (n, c) => n + c.items.filter((i) => i.checked).length,
+    0,
+  );
+
+  // How many library files point at each field — what makes a photo or file
+  // field answerable, and so what lets its section reach complete.
+  const attachments: Record<string, number> = {};
+  for (const m of media ?? []) {
+    const fieldId = m.field_id as string | null;
+    if (fieldId) attachments[fieldId] = (attachments[fieldId] ?? 0) + 1;
+  }
 
   const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as TabKey;
 
@@ -305,12 +413,24 @@ export default async function CasePage({
                 {mediaFiles.length}
               </span>
             ) : null}
+            {key === 'compliance' && checkTotal > 0 ? (
+              <span className="tabular ml-1.5 font-mono text-2xs text-ink-muted">
+                {checkDone}/{checkTotal}
+              </span>
+            ) : null}
           </Link>
         ))}
       </nav>
 
       {tab === 'file' ? (
         <>
+          <CaseDetailsCard
+            caseId={params.id}
+            details={caseDetails}
+            members={orgMembers}
+            canWrite={can.write(org.rank)}
+          />
+
           <LocationCard
             caseId={params.id}
             address={[kase.address, kase.city, kase.county, kase.state].filter(Boolean).join(', ')}
@@ -325,8 +445,15 @@ export default async function CasePage({
             initialValues={initialValues}
             people={personOptions}
             canWrite={can.write(org.rank)}
+            attachments={attachments}
           />
         </>
+      ) : tab === 'compliance' ? (
+        <ChecklistPanel
+          caseId={params.id}
+          checklists={caseChecklists}
+          canWrite={can.write(org.rank)}
+        />
       ) : tab === 'library' ? (
         <LibraryPanel
           caseId={params.id}

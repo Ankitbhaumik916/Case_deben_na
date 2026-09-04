@@ -23,6 +23,7 @@ rendered dynamically.
 | 6 | Pipeline board + admin notes | **done** |
 | 7 | Evidence + chain of custody | **done** |
 | 8 | Case library — upload, gallery, tags, media logs | **done** |
+| — | Compliance checklist for investigators; editable case details | **done** |
 | 9–14 | See the build plan | not started |
 
 ---
@@ -168,7 +169,7 @@ One Next project, one deployable output.
 | `/portal` | the app home | required |
 | `/cases` | case list (`?view=list\|map\|stats`) | required |
 | `/cases/new` | case type picker, then create | investigator+ |
-| `/cases/[id]` | case file — dynamic fields, autosave (`?tab=file\|library\|custody`) | required |
+| `/cases/[id]` | case file — dynamic fields, autosave (`?tab=file\|library\|custody\|compliance`) | required |
 | `/cases/[id]/custody` | printable chain-of-custody document | required |
 | `/cases/[id]/media-log/[logId]` | printable media log | required |
 | `/pipeline` | kanban board, admin notes | required |
@@ -190,6 +191,7 @@ npm run verify:workspace # dynamic fields, autosave, completion, audit trail
 npm run verify:pipeline # board columns, moves, transition guard, admin notes
 npm run verify:evidence # custody ledger, derived status, printable document
 npm run verify:media    # storage boundary, upload, gallery, tags, media logs
+npm run verify:fixes    # the five pre-phase-9 corrections
 ```
 
 Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at
@@ -201,6 +203,13 @@ They also assume nothing about how much data exists: counts are captured at the
 start of a run and compared against at the end. Two suites originally asserted
 seeded literals (5 cases, 7 sections) and began failing the moment the product
 was used for real, which is the wrong thing to notice.
+
+**Testing that a write was refused.** An INSERT blocked by a `WITH CHECK` clause
+raises `42501`. An UPDATE or DELETE blocked by a `USING` clause does not — the
+row is filtered out before the statement sees it, so PostgREST reports success
+over zero rows. Asserting on the error alone reads a correct refusal as a leak.
+Ask for the affected rows back and confirm the stored value is untouched;
+`writeIsRefused` / `deleteIsRefused` in `verify-fixes.mjs` are the pattern.
 
 ## Design
 

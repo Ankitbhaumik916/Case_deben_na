@@ -1,3 +1,4 @@
+import { AuthAside } from '../AuthAside';
 import Link from 'next/link';
 import { LoginForm } from './LoginForm';
 
@@ -83,25 +84,11 @@ export default function LoginPage({
         </div>
       </div>
 
-      {/* ---------- ink panel ---------- */}
-      <div className="relative hidden flex-1 bg-chrome lg:block">
-        <div className="flex h-full flex-col justify-between p-12">
-          <div />
-          <div className="max-w-lg">
-            <p className="text-2xl font-semibold leading-snug tracking-tight text-ink-inverse">
-              One engine, every discipline.
-            </p>
-            <p className="mt-4 text-base leading-relaxed text-ink-inverse-muted">
-              Fire investigation, burglary, questioned documents — each is a template an
-              administrator configures, not a release an engineer ships. Sections, fields,
-              statuses, compliance checklists and report structure are all data.
-            </p>
-          </div>
-          <p className="font-mono text-2xs uppercase tracking-widest text-ink-inverse-muted">
-            Access controlled · Fully audited
-          </p>
-        </div>
-      </div>
+      <AuthAside headline="One engine, every discipline.">
+        Fire investigation, burglary, questioned documents — each is a template an
+        administrator configures, not a release an engineer ships. Sections, fields,
+        statuses, compliance checklists and report structure are all data.
+      </AuthAside>
     </main>
   );
 }

@@ -26,7 +26,8 @@
     "verify:workspace": "node scripts/verify-workspace.mjs",
     "verify:pipeline": "node scripts/verify-pipeline.mjs",
     "verify:evidence": "node scripts/verify-evidence.mjs",
-    "verify:media": "node scripts/verify-media.mjs"
+    "verify:media": "node scripts/verify-media.mjs",
+    "verify:fixes": "node scripts/verify-fixes.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

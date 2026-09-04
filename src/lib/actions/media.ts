@@ -77,6 +77,11 @@ const RegisterInput = z.object({
   sizeBytes: z.number().int().nonnegative().optional(),
   caption: z.string().trim().max(500).optional().or(z.literal('')),
   capturedAt: z.string().trim().optional().or(z.literal('')),
+  // Set when the file was added through a photo or file field on a section,
+  // rather than dropped into the library as a whole. This is what lets a
+  // storage-backed field count towards its section being complete.
+  sectionId: z.string().uuid().optional().nullable(),
+  fieldId: z.string().uuid().optional().nullable(),
 });
 
 /** Record an uploaded object. Called after the bytes have landed. */
@@ -89,6 +94,8 @@ export async function registerMedia(input: {
   caption?: string;
   capturedAt?: string;
   tags?: string[];
+  sectionId?: string | null;
+  fieldId?: string | null;
 }): Promise<MediaResult<{ id: string }>> {
   const parsed = RegisterInput.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0].message);
@@ -117,6 +124,8 @@ export async function registerMedia(input: {
       size_bytes: parsed.data.sizeBytes ?? null,
       caption: parsed.data.caption || null,
       captured_at: parsed.data.capturedAt || null,
+      section_id: parsed.data.sectionId ?? null,
+      field_id: parsed.data.fieldId ?? null,
       tags: input.tags ?? [],
       uploaded_by: user?.id ?? null,
     })
