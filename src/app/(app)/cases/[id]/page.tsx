@@ -13,11 +13,13 @@ import { EvidencePanel, type EvidenceItem } from './EvidencePanel';
 import { LibraryPanel, type MediaFile, type MediaLog } from './LibraryPanel';
 import { CaseDetailsCard, type CaseDetails, type OrgMember } from './CaseDetailsCard';
 import { ChecklistPanel, type Checklist, type ChecklistItem } from './ChecklistPanel';
+import { InterviewsPanel, type InterviewRow } from './InterviewsPanel';
 
 export const metadata = { title: 'Case' };
 
 const TABS = [
   ['file', 'Case file'],
+  ['interviews', 'Interviews'],
   ['library', 'Library'],
   ['custody', 'Chain of custody'],
   ['compliance', 'Compliance'],
@@ -66,6 +68,7 @@ export default async function CasePage({
     { data: checklists },
     { data: checklistItems },
     { data: responses },
+    { data: interviews },
   ] = await Promise.all([
       supabase
         .from('case_type_sections')
@@ -138,6 +141,14 @@ export default async function CasePage({
         .from('case_checklist_responses')
         .select('item_id, is_checked, completed_at, users ( full_name, email )')
         .eq('case_id', params.id),
+      supabase
+        .from('interviews')
+        .select(
+          'id, subject_name, subject_person_id, conducted_by, conducted_by_id, interview_date, location, narrative, bucket, audio_path, audio_mime, duration_seconds, transcript, transcript_status, transcript_error, ai_summary, created_at',
+        )
+        .eq('case_id', params.id)
+        .order('interview_date', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false }),
     ]);
 
   const fieldsBySection = new Map<string, FieldDef[]>();
@@ -293,6 +304,45 @@ export default async function CasePage({
   const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as TabKey;
 
   /*
+   * Recordings live in a private bucket, so playback needs a signed URL. Only
+   * mint them for the tab that plays them — the same reasoning as the library.
+   */
+  const audioUrls = new Map<string, string>();
+  if (tab === 'interviews') {
+    const paths = (interviews ?? [])
+      .map((i) => i.audio_path as string | null)
+      .filter((p): p is string => Boolean(p));
+    if (paths.length) {
+      const { data: signed } = await supabase.storage
+        .from('case-audio')
+        .createSignedUrls(paths, 3600);
+      for (const s of signed ?? []) {
+        if (s.signedUrl && s.path) audioUrls.set(s.path, s.signedUrl);
+      }
+    }
+  }
+
+  const interviewRows: InterviewRow[] = (interviews ?? []).map((i) => ({
+    id: i.id as string,
+    subjectName: i.subject_name as string,
+    subjectPersonId: (i.subject_person_id as string | null) ?? null,
+    conductedBy: (i.conducted_by as string | null) ?? null,
+    conductedById: (i.conducted_by_id as string | null) ?? null,
+    interviewDate: (i.interview_date as string | null) ?? null,
+    location: (i.location as string | null) ?? null,
+    narrative: (i.narrative as string | null) ?? null,
+    audioPath: (i.audio_path as string | null) ?? null,
+    audioMime: (i.audio_mime as string | null) ?? null,
+    audioUrl: i.audio_path ? (audioUrls.get(i.audio_path as string) ?? null) : null,
+    durationSeconds: (i.duration_seconds as number | null) ?? null,
+    transcript: (i.transcript as string | null) ?? null,
+    transcriptStatus: (i.transcript_status as string) ?? 'not_started',
+    transcriptError: (i.transcript_error as string | null) ?? null,
+    aiSummary: (i.ai_summary as string | null) ?? null,
+    createdAt: i.created_at as string,
+  }));
+
+  /*
    * The bucket is private, so every file needs a signed URL to be shown or
    * downloaded. Signing is a round trip to storage, and it is only worth making
    * when the library is the tab actually being looked at — the case file and
@@ -414,6 +464,11 @@ export default async function CasePage({
                 {mediaFiles.length}
               </span>
             ) : null}
+            {key === 'interviews' && interviewRows.length > 0 ? (
+              <span className="tabular ml-1.5 font-mono text-2xs text-ink-muted">
+                {interviewRows.length}
+              </span>
+            ) : null}
             {key === 'compliance' && checkTotal > 0 ? (
               <span className="tabular ml-1.5 font-mono text-2xs text-ink-muted">
                 {checkDone}/{checkTotal}
@@ -449,6 +504,14 @@ export default async function CasePage({
             attachments={attachments}
           />
         </>
+      ) : tab === 'interviews' ? (
+        <InterviewsPanel
+          caseId={params.id}
+          interviews={interviewRows}
+          people={personOptions}
+          members={orgMembers}
+          canWrite={can.write(org.rank)}
+        />
       ) : tab === 'compliance' ? (
         <ChecklistPanel
           caseId={params.id}

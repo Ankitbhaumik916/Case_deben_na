@@ -28,7 +28,8 @@
     "verify:evidence": "node scripts/verify-evidence.mjs",
     "verify:media": "node scripts/verify-media.mjs",
     "verify:fixes": "node scripts/verify-fixes.mjs",
-    "verify:edits": "node scripts/verify-edits.mjs"
+    "verify:edits": "node scripts/verify-edits.mjs",
+    "verify:interviews": "node scripts/verify-interviews.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

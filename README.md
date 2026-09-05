@@ -25,7 +25,8 @@ rendered dynamically.
 | 8 | Case library — upload, gallery, tags, media logs | **done** |
 | — | Compliance checklist for investigators; editable case details | **done** |
 | — | Rich text in long-form fields; photo mark-up | **done** |
-| 9–14 | See the build plan | not started |
+| 9 | Interviews — many per case, with recordings | **partly** (transcription and AI summary await a provider) |
+| 10–14 | See the build plan | not started |
 
 ---
 
@@ -144,6 +145,12 @@ retention_schedules  per org / per case type
 - **The audit trail is written by triggers**, not by the client, and has a
   `SELECT` policy only — no client role can edit or erase it. Application events
   with no row behind them (exports, sign-ins) go through `public.log_activity()`.
+- **A section answers a question once; a list answers it many times.** A case
+  type's fields hold one value each, which is right for "what colour was the
+  smoke" and wrong for "who did you speak to" — there is no fixed number of
+  witnesses. Anything a case accumulates rather than states — evidence,
+  interviews, files — is rows of its own, reached from its own tab, not a
+  section somebody has to keep widening.
 - **An exhibit is never edited.** Mark-up on a photograph — arrows, boxes,
   labels — is stored as shapes beside the file in image-relative coordinates,
   and drawn as an SVG layer wherever the photograph appears, including in print.
@@ -184,7 +191,7 @@ One Next project, one deployable output.
 | `/portal` | the app home | required |
 | `/cases` | case list (`?view=list\|map\|stats`) | required |
 | `/cases/new` | case type picker, then create | investigator+ |
-| `/cases/[id]` | case file — dynamic fields, autosave (`?tab=file\|library\|custody\|compliance`) | required |
+| `/cases/[id]` | case file — dynamic fields, autosave (`?tab=file\|interviews\|library\|custody\|compliance`) | required |
 | `/cases/[id]/custody` | printable chain-of-custody document | required |
 | `/cases/[id]/media-log/[logId]` | printable media log | required |
 | `/pipeline` | kanban board, admin notes | required |
@@ -208,6 +215,7 @@ npm run verify:evidence # custody ledger, derived status, printable document
 npm run verify:media    # storage boundary, upload, gallery, tags, media logs
 npm run verify:fixes    # the five pre-phase-9 corrections
 npm run verify:edits    # template delete guards, rich text, photo mark-up
+npm run verify:interviews  # many interviews per case, recordings, audit
 ```
 
 Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at
