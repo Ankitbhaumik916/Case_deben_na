@@ -87,6 +87,13 @@ const { count: fireSectionsBefore } = await svc
   .select('id', { count: 'exact', head: true })
   .eq('case_type_id', fireType.id);
 
+// Same reasoning as the section count above: how many disciplines exist is a
+// number that grows the moment somebody uses the builder for real. What the
+// cleanup should restore is the number this run started with.
+const { count: typesBefore } = await svc
+  .from('case_types')
+  .select('id', { count: 'exact', head: true });
+
 let typeId = null;
 let caseId = null;
 
@@ -228,7 +235,14 @@ try {
     check(!r.error, 'test discipline removed', r.error?.message ?? '');
   }
   const { count } = await svc.from('case_types').select('id', { count: 'exact', head: true });
-  check(count === 2, 'back to the two seeded case types', String(count));
+  const { count: typesAfter } = await svc
+    .from('case_types')
+    .select('id', { count: 'exact', head: true });
+  check(
+    typesAfter === typesBefore,
+    'back to the case-type count this run started with',
+    `${typesAfter} of ${typesBefore}`,
+  );
 }
 
 console.log('\n' + (fail === 0 ? 'BUILDER E2E: all checks passed' : `BUILDER E2E: ${fail} FAILED`));

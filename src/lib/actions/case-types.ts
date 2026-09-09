@@ -19,13 +19,39 @@ const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const keyPattern = /^[a-z0-9_]+$/;
 const hexPattern = /^#[0-9a-fA-F]{6}$/;
 
-export type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
+/**
+ * A refusal that a person may override.
+ *
+ * Removing something from a template that cases have already answered destroys
+ * those answers. That is sometimes exactly what an administrator means to do —
+ * a field added by mistake, a status nobody should have used — so the first
+ * attempt comes back carrying the count instead of a flat no, and the interface
+ * puts the number in front of them before asking again with `confirmed`.
+ *
+ * The count is what makes the warning worth reading: "delete this field?" is a
+ * question nobody thinks about, "delete this field and the 47 answers recorded
+ * against it?" is a different question.
+ */
+export interface DestructiveWarning {
+  count: number;
+  /** What would go with it, phrased for the dialog. */
+  consequence: string;
+}
+
+export type ActionResult<T = null> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; warning?: DestructiveWarning };
 
 function fail(error: string): { ok: false; error: string } {
   return { ok: false, error };
 }
 
 const done: ActionResult = { ok: true, data: null };
+const needsConfirmation = (
+  error: string,
+  count: number,
+  consequence: string,
+): ActionResult => ({ ok: false, error, warning: { count, consequence } });
 
 /** Turns "Vehicle Theft" into "vehicle-theft". */
 export async function slugify(value: string): Promise<string> {
@@ -148,7 +174,7 @@ export async function duplicateCaseType(
   return { ok: true, data: { id: data as string } };
 }
 
-export async function deleteCaseType(id: string): Promise<ActionResult> {
+export async function deleteCaseType(id: string, confirmed = false): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   // cases.case_type_id is ON DELETE RESTRICT, so the database would refuse
@@ -158,9 +184,11 @@ export async function deleteCaseType(id: string): Promise<ActionResult> {
     .select('id', { count: 'exact', head: true })
     .eq('case_type_id', id);
 
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} case${count === 1 ? '' : 's'} still use this type. Deactivate it instead — existing cases keep working and it stops appearing on new ones.`,
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} case${count === 1 ? '' : 's'} still use this type.`,
+      count ?? 0,
+      `Deleting it deletes ${count === 1 ? 'that case' : 'those cases'} and everything recorded on ${count === 1 ? 'it' : 'them'} — fields, evidence, files and interviews. Deactivating it instead keeps them working and stops it appearing on new cases.`,
     );
   }
 
@@ -267,7 +295,11 @@ export async function updateSection(
   return done;
 }
 
-export async function deleteSection(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteSection(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   // Field values cascade with the section. Say so plainly before it happens.
@@ -281,9 +313,11 @@ export async function deleteSection(id: string, caseTypeId: string): Promise<Act
       ).data?.map((f) => f.id as string) ?? ['00000000-0000-0000-0000-000000000000'],
     );
 
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} answer${count === 1 ? '' : 's'} recorded on real cases would be deleted with this section. Remove it from the template only once those cases are closed out.`,
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} answer${count === 1 ? '' : 's'} recorded on real cases sit in this section.`,
+      count ?? 0,
+      'Deleting the section deletes those answers from the cases that gave them. They cannot be recovered.',
     );
   }
 
@@ -429,7 +463,11 @@ export async function createField(input: {
   return { ok: true, data: { id: data.id as string } };
 }
 
-export async function deleteField(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteField(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   const { count } = await supabase
@@ -437,9 +475,11 @@ export async function deleteField(id: string, caseTypeId: string): Promise<Actio
     .select('id', { count: 'exact', head: true })
     .eq('field_id', id);
 
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} case${count === 1 ? '' : 's'} already answered this field. Deleting it would delete those answers.`,
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} case${count === 1 ? '' : 's'} already answered this field.`,
+      count ?? 0,
+      'Deleting it deletes those answers from the cases that gave them. They cannot be recovered.',
     );
   }
 

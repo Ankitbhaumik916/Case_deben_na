@@ -104,19 +104,48 @@ if (storageFieldsError) {
   process.exit(1);
 }
 
-const photoField = (storageFields ?? [])[0] ?? null;
-const photoTypeId = photoField?.case_type_sections?.case_type_id ?? null;
+/*
+ * Pick a case AND a field where that field has nothing attached yet.
+ *
+ * Whether a storage-backed field counts as answered is a yes or no, not a
+ * tally: the second photograph does not move the counter, because the first
+ * already answered it. Testing on a field somebody has already filled proves
+ * nothing and reads as a regression — which is what happened once real
+ * photographs turned up on the seeded case.
+ */
+let photoField = null;
+let kase = null;
 
-const { data: kase } = await svc
-  .from('cases')
-  .select('id, org_id, case_number, title, case_type_id')
-  .eq('case_type_id', photoTypeId ?? '00000000-0000-0000-0000-000000000000')
-  .order('case_number')
-  .limit(1)
-  .maybeSingle();
+for (const field of storageFields ?? []) {
+  const typeId = field.case_type_sections?.case_type_id;
+  if (!typeId) continue;
 
-if (!kase) {
-  console.log('\n  FAIL  no case exists of a type carrying a photo or file field');
+  const { data: candidates } = await svc
+    .from('cases')
+    .select('id, org_id, case_number, title, case_type_id')
+    .eq('case_type_id', typeId)
+    .order('case_number');
+
+  for (const candidate of candidates ?? []) {
+    const { count } = await svc
+      .from('media_files')
+      .select('id', { count: 'exact', head: true })
+      .eq('case_id', candidate.id)
+      .eq('field_id', field.id);
+    if ((count ?? 0) === 0) {
+      photoField = field;
+      kase = candidate;
+      break;
+    }
+  }
+  if (kase) break;
+}
+
+if (!kase || !photoField) {
+  console.log(
+    '\n  FAIL  every photo and file field on every case already has something' +
+      ' attached, so there is no unanswered one to test the counter with.',
+  );
   process.exit(1);
 }
 
@@ -202,7 +231,11 @@ if (!photoField) {
 
   const before = await get(`/cases/${kase.id}`, invCookie);
   const railBefore = before.body.match(/>(\d+)\/(\d+)</g) ?? [];
-  check(true, `found "${photoField.label}" (${photoField.field_type})`, `section has ${sectionFieldCount} fields`);
+  check(
+    true,
+    `found "${photoField.label}" (${photoField.field_type}) with nothing attached yet`,
+    `on ${kase.case_number}, in a section of ${sectionFieldCount} fields`,
+  );
 
   const path = `${kase.org_id}/${kase.id}/fixprobe-${stamp}.png`;
   const { error: upErr } = await inv.storage
@@ -232,9 +265,18 @@ if (!photoField) {
 
   const after = await get(`/cases/${kase.id}`, invCookie);
   const railAfter = after.body.match(/>(\d+)\/(\d+)</g) ?? [];
+  // One counter should have gone up by exactly one: that field went from
+  // unanswered to answered. Nothing else on the page should have moved, and
+  // "changed at all" was too weak a question to notice either way.
+  const answeredOf = (marks) => marks.map((m) => Number(m.replace(/[><]/g, '').split('/')[0]));
+  const before2 = answeredOf(railBefore);
+  const after2 = answeredOf(railAfter);
+  const rose = after2.filter((n, i) => n === (before2[i] ?? -99) + 1).length;
+  const fell = after2.filter((n, i) => n < (before2[i] ?? -99)).length;
+
   check(
-    JSON.stringify(railBefore) !== JSON.stringify(railAfter),
-    'the section counters on the page changed after the upload',
+    rose === 1 && fell === 0,
+    'exactly one section counter went up by one',
     `${railBefore.join(' ')}  ->  ${railAfter.join(' ')}`,
   );
   check(

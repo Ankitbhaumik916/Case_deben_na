@@ -10,10 +10,36 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  * the admin-only RLS policies decide, not a check in this file.
  */
 
-export type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
+/**
+ * A refusal that a person may override.
+ *
+ * Removing something from a template that cases have already answered destroys
+ * those answers. That is sometimes exactly what an administrator means to do —
+ * a field added by mistake, a status nobody should have used — so the first
+ * attempt comes back carrying the count instead of a flat no, and the interface
+ * puts the number in front of them before asking again with `confirmed`.
+ *
+ * The count is what makes the warning worth reading: "delete this field?" is a
+ * question nobody thinks about, "delete this field and the 47 answers recorded
+ * against it?" is a different question.
+ */
+export interface DestructiveWarning {
+  count: number;
+  /** What would go with it, phrased for the dialog. */
+  consequence: string;
+}
+
+export type ActionResult<T = null> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; warning?: DestructiveWarning };
 
 const done: ActionResult = { ok: true, data: null };
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
+const needsConfirmation = (
+  error: string,
+  count: number,
+  consequence: string,
+): ActionResult => ({ ok: false, error, warning: { count, consequence } });
 
 function keyFrom(label: string): string {
   return label
@@ -130,7 +156,11 @@ export async function updateStatus(
   return done;
 }
 
-export async function deleteStatus(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteStatus(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   // cases.status_id is ON DELETE RESTRICT; explain rather than surface 23503.
@@ -139,9 +169,11 @@ export async function deleteStatus(id: string, caseTypeId: string): Promise<Acti
     .select('id', { count: 'exact', head: true })
     .eq('status_id', id);
 
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} case${count === 1 ? ' is' : 's are'} sitting in this status. Move them first, or deactivate it instead.`,
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} case${count === 1 ? ' is' : 's are'} sitting in this status right now.`,
+      count ?? 0,
+      'A case cannot be left without a status, so the delete will fail at the database unless they are moved first. Deactivating the status instead hides it from new cases and leaves these where they are.',
     );
   }
 
@@ -211,7 +243,11 @@ export async function createChecklist(input: {
   return { ok: true, data: { id: data.id as string } };
 }
 
-export async function deleteChecklist(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteChecklist(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   const { data: items } = await supabase.from('checklist_items').select('id').eq('checklist_id', id);
@@ -222,9 +258,11 @@ export async function deleteChecklist(id: string, caseTypeId: string): Promise<A
       .from('case_checklist_responses')
       .select('id', { count: 'exact', head: true })
       .in('item_id', itemIds);
-    if ((count ?? 0) > 0) {
-      return fail(
-        `${count} tick${count === 1 ? '' : 's'} recorded against this checklist on real cases would be deleted with it.`,
+    if ((count ?? 0) > 0 && !confirmed) {
+      return needsConfirmation(
+        `${count} tick${count === 1 ? ' has' : 's have'} been recorded against this checklist on real cases.`,
+        count ?? 0,
+        'Deleting the checklist deletes those answers, along with who completed each check and when.',
       );
     }
   }
@@ -283,7 +321,11 @@ export async function createChecklistItem(input: {
   return done;
 }
 
-export async function deleteChecklistItem(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteChecklistItem(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   const { count } = await supabase
@@ -291,8 +333,12 @@ export async function deleteChecklistItem(id: string, caseTypeId: string): Promi
     .select('id', { count: 'exact', head: true })
     .eq('item_id', id);
 
-  if ((count ?? 0) > 0) {
-    return fail(`${count} case${count === 1 ? '' : 's'} already answered this check.`);
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} case${count === 1 ? '' : 's'} already answered this check.`,
+      count ?? 0,
+      'Deleting it removes those answers, along with who completed the check and when.',
+    );
   }
 
   const { data, error } = await supabase.from('checklist_items').delete().eq('id', id).select('id');
@@ -364,7 +410,11 @@ export async function updateReportSection(
   return done;
 }
 
-export async function deleteReportSection(id: string, caseTypeId: string): Promise<ActionResult> {
+export async function deleteReportSection(
+  id: string,
+  caseTypeId: string,
+  confirmed = false,
+): Promise<ActionResult> {
   const supabase = createSupabaseServerClient();
 
   // case_report_section_drafts cascades from this row, so deleting a section
@@ -376,9 +426,11 @@ export async function deleteReportSection(id: string, caseTypeId: string): Promi
     .select('id', { count: 'exact', head: true })
     .eq('report_section_id', id);
 
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} case${count === 1 ? ' has' : 's have'} written against this section. Deleting it would delete what they wrote — take it out of the template only once those cases are closed out.`,
+  if ((count ?? 0) > 0 && !confirmed) {
+    return needsConfirmation(
+      `${count} case${count === 1 ? ' has' : 's have'} written against this section.`,
+      count ?? 0,
+      'Deleting it deletes what they wrote. Their drafts cannot be recovered.',
     );
   }
 

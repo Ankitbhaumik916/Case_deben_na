@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useDestructiveDelete } from '@/components/ui/ConfirmDialog';
 import { useRouter } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 
@@ -26,7 +27,24 @@ export function useAction() {
     [router],
   );
 
-  return { run, pending, error, clearError: () => setError(null) };
+  /*
+   * Deleting part of a template goes through here rather than through run(),
+   * because it asks first and may ask a second time with a count. Every editor
+   * gets it from the same place so the four of them cannot drift into asking
+   * differently.
+   */
+  const destructive = useDestructiveDelete({
+    onError: (m) => setError(m || null),
+    onDone: () => router.refresh(),
+  });
+
+  return {
+    run,
+    pending,
+    error,
+    clearError: () => setError(null),
+    destructive,
+  };
 }
 
 export function ErrorNote({ message }: { message: string | null }) {

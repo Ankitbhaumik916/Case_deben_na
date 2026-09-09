@@ -28,7 +28,7 @@ export function ReportTemplateEditor({
   reportSections: ReportSectionRow[];
   sections: { id: string; label: string }[];
 }) {
-  const { run, pending, error } = useAction();
+  const { run, pending, error, destructive } = useAction();
   const [adding, setAdding] = React.useState(false);
 
   const sectionLabel = new Map(sections.map((s) => [s.id, s.label]));
@@ -53,6 +53,7 @@ export function ReportTemplateEditor({
       </p>
 
       <ErrorNote message={error} />
+      {destructive.dialog}
 
       {adding ? (
         <ReportSectionForm
@@ -134,11 +135,14 @@ export function ReportTemplateEditor({
                 <IconButton
                   label={`Delete ${section.heading}`}
                   disabled={pending}
-                  onClick={() => {
-                    if (window.confirm(`Delete the "${section.heading}" report section?`)) {
-                      run(() => deleteReportSection(section.id, caseTypeId));
-                    }
-                  }}
+                  onClick={() =>
+                    destructive.request({
+                      title: `Delete the "${section.heading}" report section?`,
+                      consequence: 'The section is removed from this case type’s report outline.',
+                      attempt: (confirmed) =>
+                        deleteReportSection(section.id, caseTypeId, confirmed),
+                    })
+                  }
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </IconButton>

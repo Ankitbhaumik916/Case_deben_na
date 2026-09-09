@@ -33,7 +33,7 @@ export function ChecklistEditor({
   checklists: ChecklistRow[];
   sections: { key: string; label: string }[];
 }) {
-  const { run, pending, error } = useAction();
+  const { run, pending, error, destructive } = useAction();
   const [adding, setAdding] = React.useState(false);
   const [name, setName] = React.useState('');
   const [standard, setStandard] = React.useState('');
@@ -59,6 +59,7 @@ export function ChecklistEditor({
       </p>
 
       <ErrorNote message={error} />
+      {destructive.dialog}
 
       {adding ? (
         <form
@@ -154,11 +155,13 @@ export function ChecklistEditor({
             <IconButton
               label={`Delete ${checklist.name}`}
               disabled={pending}
-              onClick={() => {
-                if (window.confirm(`Delete "${checklist.name}" and its checks?`)) {
-                  run(() => deleteChecklist(checklist.id, caseTypeId));
-                }
-              }}
+              onClick={() =>
+                destructive.request({
+                  title: `Delete "${checklist.name}"?`,
+                  consequence: 'The checklist and every check in it are removed from this case type.',
+                  attempt: (confirmed) => deleteChecklist(checklist.id, caseTypeId, confirmed),
+                })
+              }
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </IconButton>
@@ -188,7 +191,14 @@ export function ChecklistEditor({
                   <IconButton
                     label={`Delete check: ${item.label}`}
                     disabled={pending}
-                    onClick={() => run(() => deleteChecklistItem(item.id, caseTypeId))}
+                    onClick={() =>
+                      destructive.request({
+                        title: 'Delete this check?',
+                        consequence: `"${item.label}" is removed from the checklist.`,
+                        attempt: (confirmed) =>
+                          deleteChecklistItem(item.id, caseTypeId, confirmed),
+                      })
+                    }
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </IconButton>

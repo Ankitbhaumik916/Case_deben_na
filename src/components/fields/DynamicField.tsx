@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Paperclip, PenLine } from 'lucide-react';
 import { looksLikeMarkup, richTextIsEmpty } from '@/lib/rich-text';
 import { cn } from '@/lib/utils';
-import { FieldUploader } from './FieldUploader';
+import { FieldUploader, type FieldAttachment } from './FieldUploader';
 import { RichTextField } from './RichTextField';
 
 /**
@@ -48,6 +48,7 @@ export function DynamicField({
   caseId,
   sectionId,
   attached = 0,
+  attachedFiles = [],
   onAttached,
   onChange,
   onCommit,
@@ -62,6 +63,7 @@ export function DynamicField({
   sectionId?: string;
   /** Library files already pointing at this field. */
   attached?: number;
+  attachedFiles?: FieldAttachment[];
   onAttached?: () => void;
   /** Local edit — cheap, every keystroke. */
   onChange: (value: unknown) => void;
@@ -278,6 +280,7 @@ export function DynamicField({
             label={field.label}
             kind={field.fieldType === 'photo' ? 'photo' : 'file'}
             attached={attached}
+            files={attachedFiles}
             disabled={disabled}
             libraryHref={libraryHref}
             onAttached={onAttached}

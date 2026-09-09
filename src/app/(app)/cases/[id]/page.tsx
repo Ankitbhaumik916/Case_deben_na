@@ -7,6 +7,7 @@ import { Badge, EmptyState } from '@/components/ui';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Icon } from '@/components/ui/icon';
 import type { FieldDef, PersonOption } from '@/components/fields/DynamicField';
+import type { FieldAttachment } from '@/components/fields/FieldUploader';
 import { CaseWorkspace, type SectionDef } from './CaseWorkspace';
 import { LocationCard } from './LocationCard';
 import { EvidencePanel, type EvidenceItem } from './EvidencePanel';
@@ -32,7 +33,7 @@ export default async function CasePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; file?: string };
 }) {
   const user = await requireUser();
   const org = user.activeOrg;
@@ -293,14 +294,6 @@ export default async function CasePage({
     0,
   );
 
-  // How many library files point at each field — what makes a photo or file
-  // field answerable, and so what lets its section reach complete.
-  const attachments: Record<string, number> = {};
-  for (const m of media ?? []) {
-    const fieldId = m.field_id as string | null;
-    if (fieldId) attachments[fieldId] = (attachments[fieldId] ?? 0) + 1;
-  }
-
   const tab = (TABS.find(([t]) => t === searchParams.tab)?.[0] ?? 'file') as TabKey;
 
   /*
@@ -344,21 +337,45 @@ export default async function CasePage({
 
   /*
    * The bucket is private, so every file needs a signed URL to be shown or
-   * downloaded. Signing is a round trip to storage, and it is only worth making
-   * when the library is the tab actually being looked at — the case file and
-   * the custody ledger never touch these URLs.
+   * downloaded. Signing is a round trip to storage, so only ask for the URLs
+   * the tab being looked at will actually use: the library needs all of them,
+   * the case file needs only the handful attached to its photo and file fields
+   * (for their thumbnails), and the other tabs need none.
    */
+  const pathsToSign =
+    tab === 'library'
+      ? (media ?? []).map((m) => m.storage_path as string)
+      : tab === 'file'
+        ? (media ?? []).filter((m) => m.field_id).map((m) => m.storage_path as string)
+        : [];
+
   const signedUrls = new Map<string, string>();
-  if (tab === 'library' && (media ?? []).length > 0) {
+  if (pathsToSign.length > 0) {
     const { data: signed } = await supabase.storage
       .from('case-media')
-      .createSignedUrls(
-        (media ?? []).map((m) => m.storage_path as string),
-        3600,
-      );
+      .createSignedUrls(pathsToSign, 3600);
     for (const s of signed ?? []) {
       if (s.signedUrl && s.path) signedUrls.set(s.path, s.signedUrl);
     }
+  }
+
+  // How many library files point at each field — what makes a photo or file
+  // field answerable, and so what lets its section reach complete.
+  const attachments: Record<string, number> = {};
+  // And which ones, so the field can show them rather than making somebody open
+  // the library to find out what they just uploaded.
+  const attachedFiles: Record<string, FieldAttachment[]> = {};
+
+  for (const m of media ?? []) {
+    const fieldId = m.field_id as string | null;
+    if (!fieldId) continue;
+    attachments[fieldId] = (attachments[fieldId] ?? 0) + 1;
+    (attachedFiles[fieldId] ??= []).push({
+      id: m.id as string,
+      fileName: m.file_name as string,
+      mimeType: (m.mime_type as string | null) ?? null,
+      url: signedUrls.get(m.storage_path as string) ?? null,
+    });
   }
 
   const mediaFiles: MediaFile[] = (media ?? []).map((m) => {
@@ -502,6 +519,7 @@ export default async function CasePage({
             people={personOptions}
             canWrite={can.write(org.rank)}
             attachments={attachments}
+            attachedFiles={attachedFiles}
           />
         </>
       ) : tab === 'interviews' ? (
@@ -525,6 +543,7 @@ export default async function CasePage({
           files={mediaFiles}
           logs={logDocs}
           canWrite={can.write(org.rank)}
+          initialOpenId={searchParams.file ?? null}
         />
       ) : (
         <EvidencePanel

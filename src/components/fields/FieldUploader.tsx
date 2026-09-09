@@ -1,10 +1,21 @@
 'use client';
 
 import * as React from 'react';
-import { AlertCircle, Paperclip, Upload } from 'lucide-react';
+import { AlertCircle, FileText, Paperclip, Upload } from 'lucide-react';
 import { prepareUpload, registerMedia } from '@/lib/actions/media';
 import { uploadToStorage } from '@/lib/upload';
 import { cn } from '@/lib/utils';
+
+/** One library file already answering this field, enough to show a thumbnail. */
+export interface FieldAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  url: string | null;
+}
+
+/** How many thumbnails fit before the row starts looking like a gallery. */
+const PREVIEW_LIMIT = 4;
 
 /**
  * A photo or file field, attached to the case library rather than owning its
@@ -26,6 +37,7 @@ export function FieldUploader({
   label,
   kind,
   attached,
+  files = [],
   disabled,
   libraryHref,
   onAttached,
@@ -37,6 +49,8 @@ export function FieldUploader({
   kind: 'photo' | 'file';
   /** How many library files already point at this field. */
   attached: number;
+  /** Those files, so what was uploaded is visible without opening the library. */
+  files?: FieldAttachment[];
   disabled?: boolean;
   libraryHref?: string;
   onAttached?: () => void;
@@ -49,9 +63,9 @@ export function FieldUploader({
   const inputId = `upload-${fieldId}`;
   const busy = percent !== null;
 
-  async function send(files: File[]) {
+  async function send(chosen: File[]) {
     setError(null);
-    for (const file of files) {
+    for (const file of chosen) {
       setPercent(0);
 
       const prep = await prepareUpload({ caseId, fileName: file.name, size: file.size });
@@ -162,6 +176,66 @@ export function FieldUploader({
           </a>
         ) : null}
       </div>
+
+      {/*
+        What was actually uploaded here, shown where it was uploaded. Without
+        this the only way to find out what a field holds is to open the library
+        and work it out from filenames.
+      */}
+      {files.length > 0 ? (
+        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+          {files.slice(0, PREVIEW_LIMIT).map((f) => {
+            const isImage = (f.mimeType ?? '').startsWith('image/');
+            const href = libraryHref ? `${libraryHref}&file=${f.id}` : undefined;
+            const body = (
+              <>
+                <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-edge bg-sunken">
+                  {isImage && f.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- signed
+                    // storage URL; the loader would need a per-project host
+                    <img
+                      src={f.url}
+                      alt={f.fileName}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <FileText className="h-4 w-4 text-ink-muted" aria-hidden="true" />
+                  )}
+                </span>
+                <span className="sr-only">{f.fileName}</span>
+              </>
+            );
+
+            return (
+              <li key={f.id}>
+                {href ? (
+                  <a
+                    href={href}
+                    title={f.fileName}
+                    className="block rounded transition-opacity duration-150 hover:opacity-80"
+                  >
+                    {body}
+                  </a>
+                ) : (
+                  <span title={f.fileName}>{body}</span>
+                )}
+              </li>
+            );
+          })}
+
+          {files.length > PREVIEW_LIMIT ? (
+            <li>
+              <a
+                href={libraryHref}
+                className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-edge-strong bg-sunken text-2xs font-medium text-ink-secondary hover:text-ink"
+              >
+                +{files.length - PREVIEW_LIMIT}
+              </a>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
 
       {busy ? (
         <div

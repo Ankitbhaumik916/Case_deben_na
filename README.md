@@ -151,6 +151,13 @@ retention_schedules  per org / per case type
   witnesses. Anything a case accumulates rather than states — evidence,
   interviews, files — is rows of its own, reached from its own tab, not a
   section somebody has to keep widening.
+- **Destroying work asks twice, and shows the number.** Removing something from
+  a template that cases have already answered is allowed — sometimes it is
+  exactly what an administrator means — but the first attempt comes back with
+  the count instead of doing it, and the dialog puts that number in front of
+  them before asking again. "Delete this field?" is a question nobody reads;
+  "delete this field and the 47 answers recorded against it?" is a different
+  question.
 - **An exhibit is never edited.** Mark-up on a photograph — arrows, boxes,
   labels — is stored as shapes beside the file in image-relative coordinates,
   and drawn as an SVG layer wherever the photograph appears, including in print.
@@ -216,6 +223,7 @@ npm run verify:media    # storage boundary, upload, gallery, tags, media logs
 npm run verify:fixes    # the five pre-phase-9 corrections
 npm run verify:edits    # template delete guards, rich text, photo mark-up
 npm run verify:interviews  # many interviews per case, recordings, audit
+npm run verify:ux       # editable mark-up, side panel, previews, delete warnings
 ```
 
 Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at

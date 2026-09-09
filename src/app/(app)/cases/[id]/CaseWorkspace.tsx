@@ -10,6 +10,7 @@ import {
   type FieldDef,
   type PersonOption,
 } from '@/components/fields/DynamicField';
+import type { FieldAttachment } from '@/components/fields/FieldUploader';
 import { Icon } from '@/components/ui/icon';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +45,7 @@ export function CaseWorkspace({
   people,
   canWrite,
   attachments = {},
+  attachedFiles = {},
 }: {
   caseId: string;
   sections: SectionDef[];
@@ -52,6 +54,8 @@ export function CaseWorkspace({
   canWrite: boolean;
   /** Library files per field id, for the storage-backed field types. */
   attachments?: Record<string, number>;
+  /** The files themselves, so a field can show what it holds. */
+  attachedFiles?: Record<string, FieldAttachment[]>;
 }) {
   const [values, setValues] = React.useState(initialValues);
   const [attached, setAttached] = React.useState<Record<string, number>>(attachments);
@@ -281,6 +285,7 @@ export function CaseWorkspace({
                       caseId={caseId}
                       sectionId={active.id}
                       attached={attached[field.id] ?? 0}
+                      attachedFiles={attachedFiles[field.id] ?? []}
                       onAttached={() =>
                         setAttached((a) => ({ ...a, [field.id]: (a[field.id] ?? 0) + 1 }))
                       }

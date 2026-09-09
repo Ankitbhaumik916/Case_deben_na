@@ -31,7 +31,7 @@ export function StatusesEditor({
   statuses: StatusRow[];
   inherited: StatusRow[];
 }) {
-  const { run, pending, error } = useAction();
+  const { run, pending, error, destructive } = useAction();
   const [adding, setAdding] = React.useState(false);
   const [label, setLabel] = React.useState('');
   const [color, setColor] = React.useState(STATUS_SWATCHES[1]);
@@ -54,6 +54,7 @@ export function StatusesEditor({
       </div>
 
       <ErrorNote message={error} />
+      {destructive.dialog}
 
       {usingInherited ? (
         <p className="rounded border border-edge bg-sunken px-3 py-2 text-sm text-ink-secondary">
@@ -195,11 +196,13 @@ export function StatusesEditor({
                 <IconButton
                   label={`Delete ${status.label}`}
                   disabled={pending}
-                  onClick={() => {
-                    if (window.confirm(`Delete the "${status.label}" status?`)) {
-                      run(() => deleteStatus(status.id, caseTypeId));
-                    }
-                  }}
+                  onClick={() =>
+                    destructive.request({
+                      title: `Delete the "${status.label}" status?`,
+                      consequence: 'The status is removed from this case type’s pipeline.',
+                      attempt: (confirmed) => deleteStatus(status.id, caseTypeId, confirmed),
+                    })
+                  }
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </IconButton>

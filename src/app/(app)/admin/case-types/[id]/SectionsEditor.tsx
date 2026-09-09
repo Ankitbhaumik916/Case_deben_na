@@ -19,6 +19,7 @@ import {
   moveSection,
 } from '@/lib/actions/case-types';
 import { Badge, Button, EmptyState } from '@/components/ui';
+import { useDestructiveDelete } from '@/components/ui/ConfirmDialog';
 import { Icon, ICON_NAMES } from '@/components/ui/icon';
 
 export interface SectionRow {
@@ -82,6 +83,13 @@ export function SectionsEditor({
       router.refresh();
     });
   }
+
+  // Removing part of a template always asks first, and asks a second time
+  // with the number when real cases have already answered it.
+  const destructive = useDestructiveDelete({
+    onError: (m) => setError(m || null),
+    onDone: () => router.refresh(),
+  });
 
   return (
     <div className="space-y-3">
@@ -172,11 +180,14 @@ export function SectionsEditor({
                 <IconButton
                   label={`Delete ${section.label}`}
                   disabled={pending}
-                  onClick={() => {
-                    if (window.confirm(`Delete the "${section.label}" section and its fields?`)) {
-                      run(() => deleteSection(section.id, caseTypeId));
-                    }
-                  }}
+                  onClick={() =>
+                    destructive.request({
+                      title: `Delete the "${section.label}" section?`,
+                      consequence:
+                        'The section and every field in it are removed from this case type.',
+                      attempt: (confirmed) => deleteSection(section.id, caseTypeId, confirmed),
+                    })
+                  }
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </IconButton>
@@ -224,11 +235,14 @@ export function SectionsEditor({
                         <IconButton
                           label={`Delete ${field.label}`}
                           disabled={pending}
-                          onClick={() => {
-                            if (window.confirm(`Delete the "${field.label}" field?`)) {
-                              run(() => deleteField(field.id, caseTypeId));
-                            }
-                          }}
+                          onClick={() =>
+                            destructive.request({
+                              title: `Delete the "${field.label}" field?`,
+                              consequence: 'The field is removed from this case type.',
+                              attempt: (confirmed) =>
+                                deleteField(field.id, caseTypeId, confirmed),
+                            })
+                          }
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </IconButton>
@@ -248,6 +262,7 @@ export function SectionsEditor({
           </li>
         ))}
       </ul>
+      {destructive.dialog}
     </div>
   );
 }

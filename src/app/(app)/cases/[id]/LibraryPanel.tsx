@@ -112,12 +112,15 @@ export function LibraryPanel({
   files,
   logs,
   canWrite,
+  initialOpenId = null,
 }: {
   caseId: string;
   caseNumber: string;
   files: MediaFile[];
   logs: MediaLog[];
   canWrite: boolean;
+  /** ?file= on the URL, so a thumbnail elsewhere can open this exact file. */
+  initialOpenId?: string | null;
 }) {
   const router = useRouter();
   const [view, setView] = React.useState<View>('gallery');
@@ -125,7 +128,7 @@ export function LibraryPanel({
   const [dragging, setDragging] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [openId, setOpenId] = React.useState<string | null>(initialOpenId);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [logTitle, setLogTitle] = React.useState('');
   const [pending, startTransition] = React.useTransition();
@@ -450,6 +453,19 @@ export function LibraryPanel({
         </div>
       ) : null}
 
+      {/*
+        The open file docks to the right rather than sitting under the grid.
+        Below xl there is not enough width for two columns, so it falls back to
+        stacking — but on a working screen you no longer scroll past the whole
+        gallery to reach the file you just clicked.
+      */}
+      <div
+        className={cn(
+          'grid gap-3',
+          open && 'xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)] xl:items-start',
+        )}
+      >
+        <div className="min-w-0">
       {view === 'gallery' ? (
         <Gallery
           files={shown}
@@ -481,7 +497,10 @@ export function LibraryPanel({
         />
       ) : null}
 
+        </div>
+
       {open ? (
+        <aside className="min-w-0 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
         <Detail
           key={open.id}
           caseId={caseId}
@@ -498,7 +517,9 @@ export function LibraryPanel({
           }}
           onDelete={deleteMedia}
         />
+        </aside>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -892,7 +913,7 @@ function Detail({
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-3">
         <div
           className={cn(
             'flex items-center justify-center overflow-hidden rounded bg-sunken',
