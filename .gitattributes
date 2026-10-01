@@ -1,3 +1,14 @@
 # LF in the repository and in the working copy, on every platform, so SQL and
 # TypeScript files do not churn between Windows and CI checkouts.
 * text=auto eol=lf
+
+# Fonts and other binaries: never line-ending converted. text=auto detects this
+# correctly today, but a woff2 silently rewritten on checkout is a corrupt font
+# and a failed build, and the rule costs nothing.
+*.woff2 binary
+*.woff  binary
+*.ttf   binary
+*.otf   binary
+*.png   binary
+*.jpg   binary
+*.mp4   binary
