@@ -31,7 +31,8 @@
     "verify:edits": "node scripts/verify-edits.mjs",
     "verify:interviews": "node scripts/verify-interviews.mjs",
     "verify:ux": "node scripts/verify-ux.mjs",
-    "verify:basemap": "node scripts/verify-basemap.mjs"
+    "verify:basemap": "node scripts/verify-basemap.mjs",
+    "verify:fonts": "node scripts/verify-fonts.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

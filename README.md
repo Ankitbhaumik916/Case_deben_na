@@ -151,6 +151,15 @@ retention_schedules  per org / per case type
   witnesses. Anything a case accumulates rather than states — evidence,
   interviews, files — is rows of its own, reached from its own tab, not a
   section somebody has to keep widening.
+- **The build fetches nothing.** Fonts are self-hosted rather than pulled from
+  Google at build time. `next/font/google` downloads Google's stylesheet during
+  the build and parses the file URLs out of it with a regex; when Google served
+  a deploy something that regex did not match, the build died on
+  `Cannot read properties of null (reading '1')` while the identical build
+  passed locally, because the response differs by region. Two hundred kilobytes
+  in the repo buys a deploy that cannot be broken by someone else's CDN. IBM
+  Plex is under the SIL Open Font License and `src/app/fonts/OFL.txt` ships with
+  the files, as it requires.
 - **The map key is server-read, then handed down.** CARTO's raster tiles need a
   key. `CARTO_KEY` has no `NEXT_PUBLIC_` prefix on purpose: that would inline it
   into the static bundle at build time, so rotating it would mean rebuilding the
@@ -234,6 +243,7 @@ npm run verify:edits    # template delete guards, rich text, photo mark-up
 npm run verify:interviews  # many interviews per case, recordings, audit
 npm run verify:ux       # editable mark-up, side panel, previews, delete warnings
 npm run verify:basemap  # the CARTO key, and that it is not in the repo
+npm run verify:fonts    # fonts are self-hosted, licensed, and fetch nothing
 ```
 
 Each takes `--base <url>` and `--env <file>` so the same suite can be pointed at
