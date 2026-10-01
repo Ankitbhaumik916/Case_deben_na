@@ -151,13 +151,15 @@ retention_schedules  per org / per case type
   witnesses. Anything a case accumulates rather than states — evidence,
   interviews, files — is rows of its own, reached from its own tab, not a
   section somebody has to keep widening.
-- **The map key is public, and still not committed.** CARTO's raster tiles need
-  a key, and the browser fetches them, so it travels in the URL whatever we do —
-  `NEXT_PUBLIC_CARTO_KEY` says exactly that. What protects it is the domain
-  restriction on CARTO's dashboard, not secrecy; keeping it in the environment
-  is so it can be rotated in one place. Without it the map still draws, with a
-  watermark on every tile — a missing key makes the map look wrong rather than
-  making it disappear, which is the failure worth having.
+- **The map key is server-read, then handed down.** CARTO's raster tiles need a
+  key. `CARTO_KEY` has no `NEXT_PUBLIC_` prefix on purpose: that would inline it
+  into the static bundle at build time, so rotating it would mean rebuilding the
+  client. The page reads it and passes it to the map, which means only the view
+  that draws a map carries it, and changing it in the host's settings is enough.
+  It still reaches the browser in the tile URL — secrecy was never the
+  protection, the domain restriction on CARTO's dashboard is. Without a key the
+  map still draws, with a watermark on every tile: a missing key makes the map
+  look wrong rather than making it disappear, which is the failure worth having.
 - **Destroying work asks twice, and shows the number.** Removing something from
   a template that cases have already answered is allowed — sometimes it is
   exactly what an administrator means — but the first attempt comes back with

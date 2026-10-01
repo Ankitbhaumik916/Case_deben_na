@@ -35,48 +35,51 @@ import type { CaseRow } from './types';
  */
 
 /*
- * CARTO's raster basemaps now want a key. Without one they still serve tiles,
- * but watermarked ones — so the map degrades rather than breaks if the key is
- * missing, and a deployment that forgets it looks wrong instead of looking
- * empty.
+ * CARTO's raster basemaps want a key. Without one they still serve tiles, but
+ * watermarked ones — so a deployment that forgets the key looks wrong rather
+ * than looking empty, which is the better of the two failures.
  *
- * The key is public by necessity: the browser fetches the tiles, so it travels
- * in the URL whatever we do. NEXT_PUBLIC_ says exactly that. What protects it
- * is the domain restriction set on CARTO's dashboard, not secrecy — keep it out
- * of the repo all the same, so it can be rotated in one place.
+ * The key arrives as a prop, read from CARTO_KEY by the server component that
+ * renders this. Not NEXT_PUBLIC_: that would inline it into the static bundle
+ * at build time, so rotating the key would mean rebuilding the client. Handed
+ * down per request, changing it in the host's settings is enough.
+ *
+ * It is public either way — the browser fetches the tiles, so it travels in the
+ * URL whatever we do. Secrecy is not what protects it; the domain restriction
+ * on CARTO's dashboard is. Keeping it in the environment is so there is one
+ * place to change it.
  *
  * Style stays light_all rather than the more colourful voyager: in this product
  * saturation means case status, and a basemap competing for that is the reason
  * this palette was chosen in the first place.
  */
-const CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_KEY ?? '';
-const CARTO_QUERY = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
+function basemapStyle(cartoKey: string) {
+  const query = cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : '';
 
-// Three subdomains so the browser can fetch tiles in parallel rather than
-// queueing them behind one host's connection limit.
-const CARTO_TILES = ['a', 'b', 'c'].map(
-  (sub) => `https://${sub}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${CARTO_QUERY}`,
-);
-
-const BASEMAP = {
-  version: 8 as const,
-  sources: {
-    basemap: {
-      type: 'raster' as const,
-      tiles: CARTO_TILES,
-      tileSize: 256,
-      // CARTO's terms require both credits to stay visible. The control is
-      // collapsed by default, which is fine — it expands on click.
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
+  return {
+    version: 8 as const,
+    sources: {
+      basemap: {
+        type: 'raster' as const,
+        // Three subdomains so the browser fetches tiles in parallel rather than
+        // queueing them behind one host's connection limit.
+        tiles: ['a', 'b', 'c'].map(
+          (sub) => `https://${sub}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${query}`,
+        ),
+        tileSize: 256,
+        // CARTO's terms require both credits to stay visible. The control is
+        // collapsed by default, which is fine — it expands on click.
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
+      },
     },
-  },
-  layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
-};
+    layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
+  };
+}
 
 type Stage = 'starting' | 'ready' | 'failed';
 
-export function CaseMap({ cases }: { cases: CaseRow[] }) {
+export function CaseMap({ cases, cartoKey = '' }: { cases: CaseRow[]; cartoKey?: string }) {
   const router = useRouter();
   const container = React.useRef<HTMLDivElement>(null);
   const [stage, setStage] = React.useState<Stage>('starting');
@@ -152,7 +155,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
 
       const target = new maplibregl.Map({
         container: container.current,
-        style: BASEMAP,
+        style: basemapStyle(cartoKey),
         center: [-86.15, 39.0],
         zoom: 4,
         attributionControl: { compact: true },
@@ -264,7 +267,7 @@ export function CaseMap({ cases }: { cases: CaseRow[] }) {
       pins.forEach((m) => m.remove());
       map?.remove();
     };
-  }, [located, router]);
+  }, [located, router, cartoKey]);
 
   const missing = cases.filter((c) => c.lat === null || c.lng === null);
 

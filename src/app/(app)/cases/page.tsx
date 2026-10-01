@@ -224,7 +224,12 @@ export default async function CasesPage({
             />
           ) : null}
           {view === 'stats' ? <StatsView cases={cases} /> : null}
-          {view === 'map' ? <CaseMap cases={cases} /> : null}
+          {view === 'map' ? (
+            // Read here rather than in the map itself: a plain CARTO_KEY is
+            // server-only, which is what keeps it out of the static bundle and
+            // lets it be rotated without rebuilding the client.
+            <CaseMap cases={cases} cartoKey={process.env.CARTO_KEY ?? ''} />
+          ) : null}
         </div>
       </div>
     </div>
