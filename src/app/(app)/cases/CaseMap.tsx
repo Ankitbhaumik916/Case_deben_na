@@ -34,18 +34,41 @@ import type { CaseRow } from './types';
  * back as DOM once there are enough cases to need it.
  */
 
+/*
+ * CARTO's raster basemaps now want a key. Without one they still serve tiles,
+ * but watermarked ones — so the map degrades rather than breaks if the key is
+ * missing, and a deployment that forgets it looks wrong instead of looking
+ * empty.
+ *
+ * The key is public by necessity: the browser fetches the tiles, so it travels
+ * in the URL whatever we do. NEXT_PUBLIC_ says exactly that. What protects it
+ * is the domain restriction set on CARTO's dashboard, not secrecy — keep it out
+ * of the repo all the same, so it can be rotated in one place.
+ *
+ * Style stays light_all rather than the more colourful voyager: in this product
+ * saturation means case status, and a basemap competing for that is the reason
+ * this palette was chosen in the first place.
+ */
+const CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_KEY ?? '';
+const CARTO_QUERY = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : '';
+
+// Three subdomains so the browser can fetch tiles in parallel rather than
+// queueing them behind one host's connection limit.
+const CARTO_TILES = ['a', 'b', 'c'].map(
+  (sub) => `https://${sub}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png${CARTO_QUERY}`,
+);
+
 const BASEMAP = {
   version: 8 as const,
   sources: {
     basemap: {
       type: 'raster' as const,
-      tiles: [
-        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-      ],
+      tiles: CARTO_TILES,
       tileSize: 256,
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      // CARTO's terms require both credits to stay visible. The control is
+      // collapsed by default, which is fine — it expands on click.
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
     },
   },
   layers: [{ id: 'basemap', type: 'raster' as const, source: 'basemap' }],
